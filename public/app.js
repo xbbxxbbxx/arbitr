@@ -22,7 +22,6 @@ const viewToggleCards = document.getElementById('viewToggleCards');
 
 // Определение мобильного устройства
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-const isTablet = /iPad|Android/i.test(navigator.userAgent) && window.innerWidth >= 768 && window.innerWidth <= 1024;
 
 // Автоматическое переключение на карточки на мобильных
 if (isMobile && window.innerWidth < 769) {
@@ -77,7 +76,27 @@ function throttle(func, limit) {
     };
 }
 
-// Загрузка статистики (один раз при загрузке)
+// Анимация появления чисел
+function animateNumber(element, targetValue) {
+    const current = parseInt(element.textContent) || 0;
+    const increment = targetValue > current ? 1 : -1;
+    const duration = 1000;
+    const steps = Math.abs(targetValue - current);
+    const stepDuration = duration / steps;
+    
+    let currentValue = current;
+    const timer = setInterval(() => {
+        currentValue += increment;
+        element.textContent = currentValue;
+        
+        if (currentValue === targetValue) {
+            clearInterval(timer);
+            element.textContent = targetValue;
+        }
+    }, stepDuration);
+}
+
+// Загрузка статистики
 async function loadStats() {
     try {
         const [exchangesRes, pairsRes] = await Promise.all([
@@ -89,22 +108,22 @@ async function loadStats() {
         const pairsData = await pairsRes.json();
         
         if (exchangesData.success) {
-            exchangesCountEl.textContent = exchangesData.total;
+            animateNumber(exchangesCountEl, exchangesData.total);
         }
         
         if (pairsData.success) {
-            pairsCountEl.textContent = pairsData.total;
+            animateNumber(pairsCountEl, pairsData.total);
         }
     } catch (error) {
         console.error('Ошибка загрузки статистики:', error);
     }
 }
 
-// Загрузка арбитражных возможностей (оптимизировано)
+// Загрузка арбитражных возможностей
 async function loadArbitrageOpportunities(showLoading = true) {
     try {
         if (showLoading) {
-            opportunitiesList.innerHTML = '<div class="loading">Загрузка данных...</div>';
+            opportunitiesList.innerHTML = '<div class="loading">> LOADING DATA...</div>';
         }
         
         const response = await fetch(`${API_BASE}/arbitrage?limit=50`, {
@@ -118,25 +137,25 @@ async function loadArbitrageOpportunities(showLoading = true) {
         if (data.success) {
             cachedOpportunities = data.opportunities;
             displayOpportunities(data.opportunities);
-            opportunitiesCountEl.textContent = data.opportunities.length;
+            animateNumber(opportunitiesCountEl, data.opportunities.length);
             updateTimestamp();
         } else {
             if (showLoading) {
-                opportunitiesList.innerHTML = '<div class="loading">Ошибка загрузки данных</div>';
+                opportunitiesList.innerHTML = '<div class="loading">> ERROR LOADING DATA</div>';
             }
         }
     } catch (error) {
         console.error('Ошибка загрузки арбитражных возможностей:', error);
         if (showLoading) {
-            opportunitiesList.innerHTML = '<div class="loading">Ошибка подключения к серверу</div>';
+            opportunitiesList.innerHTML = '<div class="loading">> CONNECTION ERROR</div>';
         }
     }
 }
 
-// Отображение арбитражных возможностей (оптимизировано)
+// Отображение арбитражных возможностей
 function displayOpportunities(opportunities) {
     if (opportunities.length === 0) {
-        opportunitiesList.innerHTML = '<div class="loading">Арбитражные возможности не найдены</div>';
+        opportunitiesList.innerHTML = '<div class="loading">> NO OPPORTUNITIES FOUND</div>';
         return;
     }
     
@@ -153,7 +172,6 @@ function displayOpportunities(opportunities) {
         });
     }
     
-    // Используем DocumentFragment для оптимизации
     const fragment = document.createDocumentFragment();
     const tempDiv = document.createElement('div');
     
@@ -165,23 +183,23 @@ function displayOpportunities(opportunities) {
             </div>
             <div class="opportunity-details">
                 <div class="opportunity-detail">
-                    <span class="detail-label">Купить на:</span>
+                    <span class="detail-label">BUY:</span>
                     <span class="detail-value">${escapeHtml(opp.buyExchange)}</span>
                 </div>
                 <div class="opportunity-detail">
-                    <span class="detail-label">Продать на:</span>
+                    <span class="detail-label">SELL:</span>
                     <span class="detail-value">${escapeHtml(opp.sellExchange)}</span>
                 </div>
                 <div class="opportunity-detail">
-                    <span class="detail-label">Цена покупки:</span>
+                    <span class="detail-label">BUY PRICE:</span>
                     <span class="detail-value">$${parseFloat(opp.buyPrice).toFixed(2)}</span>
                 </div>
                 <div class="opportunity-detail">
-                    <span class="detail-label">Цена продажи:</span>
+                    <span class="detail-label">SELL PRICE:</span>
                     <span class="detail-value">$${parseFloat(opp.sellPrice).toFixed(2)}</span>
                 </div>
                 <div class="opportunity-detail">
-                    <span class="detail-label">Прибыль:</span>
+                    <span class="detail-label">PROFIT:</span>
                     <span class="detail-value">$${parseFloat(opp.profit).toFixed(2)}</span>
                 </div>
             </div>
@@ -203,13 +221,13 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// Загрузка цен (оптимизировано для реального времени)
+// Загрузка цен
 async function loadPrices(showLoading = true) {
     try {
         const tbody = pricesTable.querySelector('tbody');
-        if (showLoading && (!tbody.querySelector('tr') || tbody.querySelector('tr').textContent.includes('Загрузка'))) {
-            tbody.innerHTML = '<tr><td colspan="11" class="loading">Загрузка данных...</td></tr>';
-            if (pricesCards) pricesCards.innerHTML = '<div class="loading">Загрузка данных...</div>';
+        if (showLoading && (!tbody.querySelector('tr') || tbody.querySelector('tr').textContent.includes('LOADING'))) {
+            tbody.innerHTML = '<tr><td colspan="11" class="loading">> LOADING DATA...</td></tr>';
+            if (pricesCards) pricesCards.innerHTML = '<div class="loading">> LOADING DATA...</div>';
         }
         
         const response = await fetch(`${API_BASE}/prices?limit=30`, {
@@ -227,27 +245,26 @@ async function loadPrices(showLoading = true) {
             updateTimestamp();
         } else {
             if (showLoading) {
-                tbody.innerHTML = '<tr><td colspan="11" class="loading">Ошибка загрузки данных</td></tr>';
-                if (pricesCards) pricesCards.innerHTML = '<div class="loading">Ошибка загрузки данных</div>';
+                tbody.innerHTML = '<tr><td colspan="11" class="loading">> ERROR LOADING DATA</td></tr>';
+                if (pricesCards) pricesCards.innerHTML = '<div class="loading">> ERROR LOADING DATA</div>';
             }
         }
     } catch (error) {
         console.error('Ошибка загрузки цен:', error);
         const tbody = pricesTable.querySelector('tbody');
         if (showLoading) {
-            tbody.innerHTML = '<tr><td colspan="11" class="loading">Ошибка подключения к серверу</td></tr>';
-            if (pricesCards) pricesCards.innerHTML = '<div class="loading">Ошибка подключения к серверу</div>';
+            tbody.innerHTML = '<tr><td colspan="11" class="loading">> CONNECTION ERROR</td></tr>';
+            if (pricesCards) pricesCards.innerHTML = '<div class="loading">> CONNECTION ERROR</div>';
         }
     }
 }
 
-// Обновление таблицы цен (оптимизировано - обновляет только изменившиеся ячейки)
+// Обновление таблицы цен
 function updatePricesTable(prices) {
     const tbody = pricesTable.querySelector('tbody');
     const exchanges = ['binance', 'coinbase', 'kraken', 'kucoin', 'bybit', 'okx', 'gateio', 'huobi', 'bitfinex', 'bitstamp'];
     
-    // Если таблица пуста, создаем полностью
-    if (!tbody.querySelector('tr') || tbody.querySelector('tr').textContent.includes('Загрузка')) {
+    if (!tbody.querySelector('tr') || tbody.querySelector('tr').textContent.includes('LOADING')) {
         tbody.innerHTML = Object.entries(prices).map(([pair, pairPrices]) => {
             const cells = exchanges.map(exchange => {
                 const price = pairPrices[exchange];
@@ -266,7 +283,6 @@ function updatePricesTable(prices) {
             `;
         }).join('');
     } else {
-        // Обновляем только изменившиеся значения
         Object.entries(prices).forEach(([pair, pairPrices]) => {
             exchanges.forEach(exchange => {
                 const cell = tbody.querySelector(`td[data-exchange="${exchange}"][data-pair="${pair}"]`);
@@ -278,8 +294,6 @@ function updatePricesTable(prices) {
                         if (newPrice) {
                             cell.className = 'price-value updating';
                             cell.textContent = `$${parseFloat(newPrice).toFixed(2)}`;
-                            cell.setAttribute('data-exchange', exchange);
-                            cell.setAttribute('data-pair', pair);
                             
                             setTimeout(() => {
                                 cell.classList.remove('updating');
@@ -295,25 +309,24 @@ function updatePricesTable(prices) {
     }
 }
 
-// Обновление карточек цен (для мобильных)
+// Обновление карточек цен
 function updatePricesCards(prices) {
     if (!pricesCards) return;
     
     const exchanges = ['binance', 'coinbase', 'kraken', 'kucoin', 'bybit', 'okx', 'gateio', 'huobi', 'bitfinex', 'bitstamp'];
     const exchangeNames = {
-        binance: 'Binance',
-        coinbase: 'Coinbase',
-        kraken: 'Kraken',
-        kucoin: 'KuCoin',
-        bybit: 'Bybit',
+        binance: 'BINANCE',
+        coinbase: 'COINBASE',
+        kraken: 'KRAKEN',
+        kucoin: 'KUCOIN',
+        bybit: 'BYBIT',
         okx: 'OKX',
-        gateio: 'Gate.io',
-        huobi: 'Huobi',
-        bitfinex: 'Bitfinex',
-        bitstamp: 'Bitstamp'
+        gateio: 'GATE.IO',
+        huobi: 'HUOBI',
+        bitfinex: 'BITFINEX',
+        bitstamp: 'BITSTAMP'
     };
     
-    // Если карточки пусты, создаем полностью
     if (!pricesCards.querySelector('.price-card')) {
         pricesCards.innerHTML = Object.entries(prices).map(([pair, pairPrices]) => {
             const exchangeCards = exchanges.map(exchange => {
@@ -343,14 +356,14 @@ function updatePricesCards(prices) {
             `;
         }).join('');
     } else {
-        // Обновляем только изменившиеся значения
         Object.entries(prices).forEach(([pair, pairPrices]) => {
             const card = pricesCards.querySelector(`.price-card[data-pair="${pair}"]`);
             if (card) {
                 exchanges.forEach(exchange => {
-                    const exchangeCard = card.querySelector(`.price-card-exchange:has(.price-card-exchange-name:contains("${exchangeNames[exchange]}"))`);
-                    if (exchangeCard) {
-                        const valueEl = exchangeCard.querySelector('.price-card-exchange-value');
+                    const exchangeDivs = card.querySelectorAll('.price-card-exchange');
+                    const exchangeIndex = exchanges.indexOf(exchange);
+                    if (exchangeDivs[exchangeIndex]) {
+                        const valueEl = exchangeDivs[exchangeIndex].querySelector('.price-card-exchange-value');
                         const newPrice = pairPrices[exchange];
                         const oldPrice = cachedPrices[pair]?.[exchange];
                         
@@ -378,7 +391,7 @@ function updateTimestamp() {
         minute: '2-digit', 
         second: '2-digit' 
     });
-    lastUpdateEl.innerHTML = `<span class="realtime-indicator"></span>Обновлено: ${timeString}`;
+    lastUpdateEl.innerHTML = `<span class="realtime-indicator"></span>LAST UPDATE: ${timeString}`;
 }
 
 // Переключение автообновления
@@ -389,29 +402,26 @@ function toggleAutoRefresh() {
         autoRefreshInterval = null;
         pricesUpdateInterval = null;
         isAutoRefresh = false;
-        autoRefreshBtn.textContent = '▶️ Авто';
+        autoRefreshBtn.querySelector('.btn-text').textContent = '[AUTO]';
         autoRefreshBtn.classList.remove('active');
     } else {
-        // Обновление арбитражных возможностей каждые 30 секунд
         autoRefreshInterval = setInterval(() => {
             loadArbitrageOpportunities(false);
         }, 30000);
         
-        // Обновление цен в реальном времени каждые 3 секунды
         pricesUpdateInterval = setInterval(() => {
             loadPrices(false);
         }, 3000);
         
         isAutoRefresh = true;
-        autoRefreshBtn.textContent = '⏸️ Стоп';
+        autoRefreshBtn.querySelector('.btn-text').textContent = '[STOP]';
         autoRefreshBtn.classList.add('active');
         
-        // Сразу запускаем обновление цен
         loadPrices(false);
     }
 }
 
-// Оптимизированные обработчики событий
+// Обработчики событий
 refreshBtn.addEventListener('click', throttle(() => {
     loadArbitrageOpportunities();
     loadPrices();
@@ -423,19 +433,18 @@ filterSelect.addEventListener('change', debounce(() => {
     displayOpportunities(cachedOpportunities);
 }, 300));
 
-// Инициализация при загрузке страницы
+// Инициализация
 document.addEventListener('DOMContentLoaded', () => {
     loadStats();
     loadArbitrageOpportunities();
     loadPrices();
     
-    // Автоматически включаем автообновление через 2 секунды
     setTimeout(() => {
         toggleAutoRefresh();
     }, 2000);
 });
 
-// Обработка видимости страницы (пауза обновлений когда вкладка неактивна)
+// Обработка видимости страницы
 document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
         if (isAutoRefresh) {
@@ -449,28 +458,7 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
-// Оптимизация для touch-событий
-if ('ontouchstart' in window) {
-    document.body.classList.add('touch-device');
-    
-    // Улучшенная обработка touch для кнопок
-    [refreshBtn, autoRefreshBtn].forEach(btn => {
-        btn.addEventListener('touchstart', function(e) {
-            this.style.transform = 'scale(0.95)';
-        }, { passive: true });
-        
-        btn.addEventListener('touchend', function(e) {
-            this.style.transform = '';
-        }, { passive: true });
-    });
+// Звуковые эффекты (опционально, можно добавить позже)
+function playSound(type) {
+    // Можно добавить звуковые эффекты для кнопок
 }
-
-// Предотвращение двойного масштабирования на iOS
-let lastTouchEnd = 0;
-document.addEventListener('touchend', function (event) {
-    const now = Date.now();
-    if (now - lastTouchEnd <= 300) {
-        event.preventDefault();
-    }
-    lastTouchEnd = now;
-}, false);

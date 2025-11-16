@@ -11,13 +11,13 @@ app.use(express.json());
 
 // Кэш для цен (TTL: 3 секунды для реального времени)
 const priceCache = new Map();
-const CACHE_TTL = 3000; // 3 секунды
+const CACHE_TTL = 3000;
 
 // Кэш для арбитражных возможностей (TTL: 30 секунд)
 const arbitrageCache = new Map();
 const ARBITRAGE_CACHE_TTL = 30000;
 
-// HTTP клиент с пулом соединений и таймаутами
+// HTTP клиент с оптимизацией
 const axiosInstance = axios.create({
   timeout: 3000,
   maxRedirects: 3,
@@ -26,70 +26,54 @@ const axiosInstance = axios.create({
   }
 });
 
-// Оптимизация: Batch запросы к биржам
-const exchangeRequestQueue = new Map();
-
-// Поддерживаемые биржи и их API endpoints
+// Поддерживаемые биржи
 const EXCHANGES = {
   binance: {
     name: 'Binance',
-    tickerUrl: 'https://api.binance.com/api/v3/ticker/price',
-    orderBookUrl: 'https://api.binance.com/api/v3/depth'
+    tickerUrl: 'https://api.binance.com/api/v3/ticker/price'
   },
   coinbase: {
     name: 'Coinbase Pro',
-    tickerUrl: 'https://api.exchange.coinbase.com/products',
-    orderBookUrl: 'https://api.exchange.coinbase.com/products'
+    tickerUrl: 'https://api.exchange.coinbase.com/products'
   },
   kraken: {
     name: 'Kraken',
-    tickerUrl: 'https://api.kraken.com/0/public/Ticker',
-    orderBookUrl: 'https://api.kraken.com/0/public/Depth'
+    tickerUrl: 'https://api.kraken.com/0/public/Ticker'
   },
   kucoin: {
     name: 'KuCoin',
-    tickerUrl: 'https://api.kucoin.com/api/v1/market/allTickers',
-    orderBookUrl: 'https://api.kucoin.com/api/v1/market/orderbook/level2_20'
+    tickerUrl: 'https://api.kucoin.com/api/v1/market/allTickers'
   },
   bybit: {
     name: 'Bybit',
-    tickerUrl: 'https://api.bybit.com/v2/public/tickers',
-    orderBookUrl: 'https://api.bybit.com/v2/public/orderBook/L2'
+    tickerUrl: 'https://api.bybit.com/v2/public/tickers'
   },
   okx: {
     name: 'OKX',
-    tickerUrl: 'https://www.okx.com/api/v5/market/ticker',
-    orderBookUrl: 'https://www.okx.com/api/v5/market/books'
+    tickerUrl: 'https://www.okx.com/api/v5/market/ticker'
   },
   gateio: {
     name: 'Gate.io',
-    tickerUrl: 'https://api.gateio.ws/api/v4/spot/tickers',
-    orderBookUrl: 'https://api.gateio.ws/api/v4/spot/order_book'
+    tickerUrl: 'https://api.gateio.ws/api/v4/spot/tickers'
   },
   huobi: {
     name: 'Huobi',
-    tickerUrl: 'https://api.huobi.pro/market/detail/merged',
-    orderBookUrl: 'https://api.huobi.pro/market/depth'
+    tickerUrl: 'https://api.huobi.pro/market/detail/merged'
   },
   bitfinex: {
     name: 'Bitfinex',
-    tickerUrl: 'https://api-pub.bitfinex.com/v2/ticker',
-    orderBookUrl: 'https://api-pub.bitfinex.com/v2/book'
+    tickerUrl: 'https://api-pub.bitfinex.com/v2/ticker'
   },
   bitstamp: {
     name: 'Bitstamp',
-    tickerUrl: 'https://www.bitstamp.net/api/v2/ticker',
-    orderBookUrl: 'https://www.bitstamp.net/api/v2/order_book'
+    tickerUrl: 'https://www.bitstamp.net/api/v2/ticker'
   }
 };
 
-// Расширенный список популярных торговых пар
+// Торговые пары
 const TRADING_PAIRS = [
-  // BTC пары
   'BTC/USDT', 'BTC/USD', 'BTC/EUR', 'BTC/GBP', 'BTC/BUSD', 'BTC/USDC',
-  // ETH пары
   'ETH/USDT', 'ETH/USD', 'ETH/EUR', 'ETH/BTC', 'ETH/BUSD', 'ETH/USDC',
-  // Популярные альткоины
   'BNB/USDT', 'BNB/BTC', 'BNB/USD',
   'SOL/USDT', 'SOL/BTC', 'SOL/USD',
   'ADA/USDT', 'ADA/BTC', 'ADA/USD',
@@ -161,47 +145,24 @@ const TRADING_PAIRS = [
   'SHIB/USDT', 'SHIB/BTC', 'SHIB/USD'
 ];
 
-// Функция для нормализации символа пары
+// Нормализация символов
 function normalizeSymbol(symbol, exchange) {
   const [base, quote] = symbol.split('/');
   
-  if (exchange === 'binance') {
-    return `${base}${quote}`;
-  } else if (exchange === 'coinbase') {
-    return `${base}-${quote}`;
-  } else if (exchange === 'kraken') {
-    return `${base}${quote}`;
-  } else if (exchange === 'kucoin') {
-    return `${base}-${quote}`;
-  } else if (exchange === 'bybit') {
-    return `${base}${quote}`;
-  } else if (exchange === 'okx') {
-    return `${base}-${quote}`;
-  } else if (exchange === 'gateio') {
-    return `${base}_${quote}`;
-  } else if (exchange === 'huobi') {
-    return `${base.toLowerCase()}${quote.toLowerCase()}`;
-  } else if (exchange === 'bitfinex') {
-    return `t${base}${quote}`;
-  } else if (exchange === 'bitstamp') {
-    return `${base.toLowerCase()}${quote.toLowerCase()}`;
-  }
+  if (exchange === 'binance') return `${base}${quote}`;
+  if (exchange === 'coinbase') return `${base}-${quote}`;
+  if (exchange === 'kraken') return `${base}${quote}`;
+  if (exchange === 'kucoin') return `${base}-${quote}`;
+  if (exchange === 'bybit') return `${base}${quote}`;
+  if (exchange === 'okx') return `${base}-${quote}`;
+  if (exchange === 'gateio') return `${base}_${quote}`;
+  if (exchange === 'huobi') return `${base.toLowerCase()}${quote.toLowerCase()}`;
+  if (exchange === 'bitfinex') return `t${base}${quote}`;
+  if (exchange === 'bitstamp') return `${base.toLowerCase()}${quote.toLowerCase()}`;
   return symbol;
 }
 
-// Оптимизированная функция получения цены с таймаутом и retry
-async function fetchPriceWithRetry(fetchFn, maxRetries = 2) {
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      return await fetchFn();
-    } catch (error) {
-      if (i === maxRetries - 1) throw error;
-      await new Promise(resolve => setTimeout(resolve, 100 * (i + 1)));
-    }
-  }
-}
-
-// Получение цены с Binance (оптимизировано)
+// Функции получения цен
 async function getBinancePrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'binance');
@@ -212,7 +173,6 @@ async function getBinancePrice(symbol) {
   }
 }
 
-// Получение цены с Coinbase (оптимизировано)
 async function getCoinbasePrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'coinbase');
@@ -223,7 +183,6 @@ async function getCoinbasePrice(symbol) {
   }
 }
 
-// Получение цены с Kraken (оптимизировано)
 async function getKrakenPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'kraken');
@@ -238,7 +197,6 @@ async function getKrakenPrice(symbol) {
   }
 }
 
-// Получение цены с KuCoin (оптимизировано)
 async function getKuCoinPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'kucoin');
@@ -253,7 +211,6 @@ async function getKuCoinPrice(symbol) {
   }
 }
 
-// Получение цены с Bybit (оптимизировано)
 async function getBybitPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'bybit');
@@ -267,7 +224,6 @@ async function getBybitPrice(symbol) {
   }
 }
 
-// Получение цены с OKX (оптимизировано)
 async function getOKXPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'okx');
@@ -281,7 +237,6 @@ async function getOKXPrice(symbol) {
   }
 }
 
-// Получение цены с Gate.io (оптимизировано)
 async function getGateIOPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'gateio');
@@ -295,7 +250,6 @@ async function getGateIOPrice(symbol) {
   }
 }
 
-// Получение цены с Huobi (оптимизировано)
 async function getHuobiPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'huobi');
@@ -309,7 +263,6 @@ async function getHuobiPrice(symbol) {
   }
 }
 
-// Получение цены с Bitfinex (оптимизировано)
 async function getBitfinexPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'bitfinex');
@@ -323,7 +276,6 @@ async function getBitfinexPrice(symbol) {
   }
 }
 
-// Получение цены с Bitstamp (оптимизировано)
 async function getBitstampPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'bitstamp');
@@ -337,7 +289,7 @@ async function getBitstampPrice(symbol) {
   }
 }
 
-// Получение всех цен для пары (оптимизировано с кэшированием)
+// Получение всех цен с кэшированием
 async function getAllPrices(symbol, useCache = true) {
   const cacheKey = `price_${symbol}`;
   const cached = priceCache.get(cacheKey);
@@ -348,23 +300,21 @@ async function getAllPrices(symbol, useCache = true) {
   
   const prices = {};
   
-  // Параллельные запросы с ограничением конкурентности
-  const priceFunctions = [
-    () => getBinancePrice(symbol).then(price => price && (prices.binance = price)),
-    () => getCoinbasePrice(symbol).then(price => price && (prices.coinbase = price)),
-    () => getKrakenPrice(symbol).then(price => price && (prices.kraken = price)),
-    () => getKuCoinPrice(symbol).then(price => price && (prices.kucoin = price)),
-    () => getBybitPrice(symbol).then(price => price && (prices.bybit = price)),
-    () => getOKXPrice(symbol).then(price => price && (prices.okx = price)),
-    () => getGateIOPrice(symbol).then(price => price && (prices.gateio = price)),
-    () => getHuobiPrice(symbol).then(price => price && (prices.huobi = price)),
-    () => getBitfinexPrice(symbol).then(price => price && (prices.bitfinex = price)),
-    () => getBitstampPrice(symbol).then(price => price && (prices.bitstamp = price))
+  const pricePromises = [
+    getBinancePrice(symbol).then(price => price && (prices.binance = price)),
+    getCoinbasePrice(symbol).then(price => price && (prices.coinbase = price)),
+    getKrakenPrice(symbol).then(price => price && (prices.kraken = price)),
+    getKuCoinPrice(symbol).then(price => price && (prices.kucoin = price)),
+    getBybitPrice(symbol).then(price => price && (prices.bybit = price)),
+    getOKXPrice(symbol).then(price => price && (prices.okx = price)),
+    getGateIOPrice(symbol).then(price => price && (prices.gateio = price)),
+    getHuobiPrice(symbol).then(price => price && (prices.huobi = price)),
+    getBitfinexPrice(symbol).then(price => price && (prices.bitfinex = price)),
+    getBitstampPrice(symbol).then(price => price && (prices.bitstamp = price))
   ];
 
-  await Promise.allSettled(priceFunctions.map(fn => fn()));
+  await Promise.allSettled(pricePromises);
   
-  // Сохраняем в кэш
   priceCache.set(cacheKey, {
     data: prices,
     timestamp: Date.now()
@@ -411,14 +361,13 @@ function calculateArbitrageOpportunities(prices, symbol) {
   return opportunities.sort((a, b) => b.profitPercent - a.profitPercent);
 }
 
-// API endpoint для получения всех арбитражных возможностей (с кэшированием)
+// API endpoints
 app.get('/api/arbitrage', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 50;
     const cacheKey = `arbitrage_${limit}`;
     const cached = arbitrageCache.get(cacheKey);
     
-    // Проверяем кэш
     if (cached && (Date.now() - cached.timestamp) < ARBITRAGE_CACHE_TTL) {
       return res.json(cached.data);
     }
@@ -426,7 +375,6 @@ app.get('/api/arbitrage', async (req, res) => {
     const allOpportunities = [];
     const pairsToProcess = TRADING_PAIRS.slice(0, limit);
     
-    // Обрабатываем пары батчами для оптимизации
     const batchSize = 10;
     for (let i = 0; i < pairsToProcess.length; i += batchSize) {
       const batch = pairsToProcess.slice(i, i + batchSize);
@@ -447,7 +395,6 @@ app.get('/api/arbitrage', async (req, res) => {
       processedPairs: pairsToProcess.length
     };
     
-    // Сохраняем в кэш
     arbitrageCache.set(cacheKey, {
       data: result,
       timestamp: Date.now()
@@ -462,11 +409,10 @@ app.get('/api/arbitrage', async (req, res) => {
   }
 });
 
-// API endpoint для получения цен конкретной пары
 app.get('/api/prices/:symbol', async (req, res) => {
   try {
     const symbol = req.params.symbol.replace('-', '/');
-    const prices = await getAllPrices(symbol, false); // Не используем кэш для конкретной пары
+    const prices = await getAllPrices(symbol, false);
     
     res.json({
       success: true,
@@ -482,14 +428,12 @@ app.get('/api/prices/:symbol', async (req, res) => {
   }
 });
 
-// API endpoint для получения всех цен (оптимизировано)
 app.get('/api/prices', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 30;
     const allPrices = {};
     const pairsToProcess = TRADING_PAIRS.slice(0, limit);
     
-    // Обрабатываем батчами
     const batchSize = 5;
     for (let i = 0; i < pairsToProcess.length; i += batchSize) {
       const batch = pairsToProcess.slice(i, i + batchSize);
@@ -519,7 +463,6 @@ app.get('/api/prices', async (req, res) => {
   }
 });
 
-// API endpoint для получения списка всех торговых пар
 app.get('/api/pairs', (req, res) => {
   res.json({
     success: true,
@@ -528,7 +471,6 @@ app.get('/api/pairs', (req, res) => {
   });
 });
 
-// API endpoint для получения списка всех бирж
 app.get('/api/exchanges', (req, res) => {
   const exchangesList = Object.keys(EXCHANGES).map(key => ({
     id: key,
@@ -542,19 +484,17 @@ app.get('/api/exchanges', (req, res) => {
   });
 });
 
-// Раздача статических файлов (должно быть ДО других маршрутов)
+// Раздача статических файлов
 const publicPath = path.join(__dirname, 'public');
 app.use(express.static(publicPath, {
   maxAge: '1d',
   etag: true
 }));
 
-// Явные маршруты для статических файлов (для Vercel)
 app.get('/styles.css', (req, res) => {
   res.sendFile(path.join(publicPath, 'styles.css'), {
     headers: {
-      'Content-Type': 'text/css',
-      'Cache-Control': 'public, max-age=86400'
+      'Content-Type': 'text/css'
     }
   });
 });
@@ -562,41 +502,22 @@ app.get('/styles.css', (req, res) => {
 app.get('/app.js', (req, res) => {
   res.sendFile(path.join(publicPath, 'app.js'), {
     headers: {
-      'Content-Type': 'application/javascript',
-      'Cache-Control': 'public, max-age=86400'
+      'Content-Type': 'application/javascript'
     }
   });
 });
 
-// Главная страница
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Очистка кэша каждые 10 минут
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, value] of priceCache.entries()) {
-    if (now - value.timestamp > CACHE_TTL * 2) {
-      priceCache.delete(key);
-    }
-  }
-  for (const [key, value] of arbitrageCache.entries()) {
-    if (now - value.timestamp > ARBITRAGE_CACHE_TTL * 2) {
-      arbitrageCache.delete(key);
-    }
-  }
-}, 600000);
-
-// Экспорт для Vercel
 if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`🚀 Сервер запущен на http://localhost:${PORT}`);
     console.log(`📊 Мониторинг арбитражных возможностей активен`);
     console.log(`📈 Поддерживается ${Object.keys(EXCHANGES).length} бирж и ${TRADING_PAIRS.length} торговых пар`);
-    console.log(`⚡ Кэширование включено для оптимизации производительности`);
   });
 }
 
-// Для Vercel serverless
 module.exports = app;
+
