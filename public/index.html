@@ -3,23 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Крипто Арбитраж - Межбиржевая торговля</title>
-    <link rel="stylesheet" href="styles.css">
+    <meta name="description" content="Платформа для межбиржевого арбитража криптовалют в реальном времени">
+    <meta name="keywords" content="криптовалюта, арбитраж, биржи, торговля, биткоин">
+    <title>Крипто Арбитраж - Межбиржевая торговля в реальном времени</title>
+    <link rel="preconnect" href="https://api.binance.com">
+    <link rel="preconnect" href="https://api.exchange.coinbase.com">
+    <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
     <div class="container">
         <header>
             <h1>💰 Крипто Арбитраж Платформа</h1>
-            <p class="subtitle">Найдите лучшие возможности для межбиржевой торговли</p>
-            <div class="status-bar">
-                <span id="status" class="status-indicator">🟢 Активен</span>
-                <span id="lastUpdate">Обновление...</span>
-            </div>
+            <p class="subtitle">Найдите возможности для межбиржевой торговли</p>
         </header>
 
         <div class="controls">
-            <button id="refreshBtn" class="btn btn-primary">🔄 Обновить данные</button>
-            <button id="autoRefreshBtn" class="btn btn-secondary">⏸️ Автообновление</button>
+            <button id="refreshBtn" class="btn btn-primary">🔄 Обновить</button>
+            <button id="autoRefreshBtn" class="btn btn-secondary">▶️ Автообновление</button>
             <select id="filterSelect" class="filter-select">
                 <option value="all">Все возможности</option>
                 <option value="high">Высокая прибыль (>1%)</option>
@@ -28,41 +28,64 @@
             </select>
         </div>
 
-        <div class="stats-grid">
+        <div class="stats">
             <div class="stat-card">
-                <div class="stat-label">Активных возможностей</div>
-                <div class="stat-value" id="totalOpportunities">0</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Максимальная прибыль</div>
-                <div class="stat-value" id="maxProfit">0%</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Мониторинг бирж</div>
-                <div class="stat-value">3</div>
+                <div class="stat-label">Всего бирж</div>
+                <div class="stat-value" id="exchangesCount">-</div>
             </div>
             <div class="stat-card">
                 <div class="stat-label">Торговых пар</div>
-                <div class="stat-value">8</div>
+                <div class="stat-value" id="pairsCount">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Найдено возможностей</div>
+                <div class="stat-value" id="opportunitiesCount">0</div>
             </div>
         </div>
 
-        <div class="opportunities-section">
-            <h2>🎯 Арбитражные возможности</h2>
-            <div id="opportunitiesList" class="opportunities-list">
-                <div class="loading">Загрузка данных...</div>
+        <div class="content">
+            <div class="opportunities-section">
+                <h2>🎯 Арбитражные возможности</h2>
+                <div id="opportunitiesList" class="opportunities-list">
+                    <div class="loading">Загрузка данных...</div>
+                </div>
+            </div>
+
+            <div class="prices-section">
+                <h2>📊 Цены на биржах</h2>
+                <div class="table-container">
+                    <table id="pricesTable" class="prices-table">
+                        <thead>
+                            <tr>
+                                <th>Пара</th>
+                                <th>Binance</th>
+                                <th>Coinbase</th>
+                                <th>Kraken</th>
+                                <th>KuCoin</th>
+                                <th>Bybit</th>
+                                <th>OKX</th>
+                                <th>Gate.io</th>
+                                <th>Huobi</th>
+                                <th>Bitfinex</th>
+                                <th>Bitstamp</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="11" class="loading">Загрузка данных...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
-        <div class="prices-section">
-            <h2>📈 Текущие цены</h2>
-            <div id="pricesTable" class="prices-table">
-                <div class="loading">Загрузка цен...</div>
-            </div>
-        </div>
+        <footer>
+            <p>Данные обновляются в реальном времени. Все цены в USD.</p>
+            <p class="timestamp" id="lastUpdate">Последнее обновление: -</p>
+        </footer>
     </div>
 
-    <script src="app.js"></script>
+    <script src="/app.js"></script>
 </body>
 </html>
-

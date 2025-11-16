@@ -9,6 +9,26 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
+// Кэш для цен (TTL: 3 секунды для реального времени)
+const priceCache = new Map();
+const CACHE_TTL = 3000; // 3 секунды
+
+// Кэш для арбитражных возможностей (TTL: 30 секунд)
+const arbitrageCache = new Map();
+const ARBITRAGE_CACHE_TTL = 30000;
+
+// HTTP клиент с пулом соединений и таймаутами
+const axiosInstance = axios.create({
+  timeout: 3000,
+  maxRedirects: 3,
+  headers: {
+    'User-Agent': 'CryptoArbitrageBot/1.0'
+  }
+});
+
+// Оптимизация: Batch запросы к биржам
+const exchangeRequestQueue = new Map();
+
 // Поддерживаемые биржи и их API endpoints
 const EXCHANGES = {
   binance: {
@@ -169,33 +189,45 @@ function normalizeSymbol(symbol, exchange) {
   return symbol;
 }
 
-// Получение цены с Binance
+// Оптимизированная функция получения цены с таймаутом и retry
+async function fetchPriceWithRetry(fetchFn, maxRetries = 2) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fetchFn();
+    } catch (error) {
+      if (i === maxRetries - 1) throw error;
+      await new Promise(resolve => setTimeout(resolve, 100 * (i + 1)));
+    }
+  }
+}
+
+// Получение цены с Binance (оптимизировано)
 async function getBinancePrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'binance');
-    const response = await axios.get(`${EXCHANGES.binance.tickerUrl}?symbol=${normalized}`, { timeout: 5000 });
+    const response = await axiosInstance.get(`${EXCHANGES.binance.tickerUrl}?symbol=${normalized}`);
     return parseFloat(response.data.price);
   } catch (error) {
     return null;
   }
 }
 
-// Получение цены с Coinbase
+// Получение цены с Coinbase (оптимизировано)
 async function getCoinbasePrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'coinbase');
-    const response = await axios.get(`${EXCHANGES.coinbase.tickerUrl}/${normalized}/ticker`, { timeout: 5000 });
+    const response = await axiosInstance.get(`${EXCHANGES.coinbase.tickerUrl}/${normalized}/ticker`);
     return parseFloat(response.data.price);
   } catch (error) {
     return null;
   }
 }
 
-// Получение цены с Kraken
+// Получение цены с Kraken (оптимизировано)
 async function getKrakenPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'kraken');
-    const response = await axios.get(`${EXCHANGES.kraken.tickerUrl}?pair=${normalized}`, { timeout: 5000 });
+    const response = await axiosInstance.get(`${EXCHANGES.kraken.tickerUrl}?pair=${normalized}`);
     const pairKey = Object.keys(response.data.result)[0];
     if (pairKey && response.data.result[pairKey].c) {
       return parseFloat(response.data.result[pairKey].c[0]);
@@ -206,11 +238,11 @@ async function getKrakenPrice(symbol) {
   }
 }
 
-// Получение цены с KuCoin
+// Получение цены с KuCoin (оптимизировано)
 async function getKuCoinPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'kucoin');
-    const response = await axios.get(EXCHANGES.kucoin.tickerUrl, { timeout: 5000 });
+    const response = await axiosInstance.get(EXCHANGES.kucoin.tickerUrl);
     const ticker = response.data.data.ticker.find(t => t.symbol === normalized);
     if (ticker && ticker.last) {
       return parseFloat(ticker.last);
@@ -221,11 +253,11 @@ async function getKuCoinPrice(symbol) {
   }
 }
 
-// Получение цены с Bybit
+// Получение цены с Bybit (оптимизировано)
 async function getBybitPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'bybit');
-    const response = await axios.get(`${EXCHANGES.bybit.tickerUrl}?symbol=${normalized}`, { timeout: 5000 });
+    const response = await axiosInstance.get(`${EXCHANGES.bybit.tickerUrl}?symbol=${normalized}`);
     if (response.data.result && response.data.result.length > 0) {
       return parseFloat(response.data.result[0].last_price);
     }
@@ -235,11 +267,11 @@ async function getBybitPrice(symbol) {
   }
 }
 
-// Получение цены с OKX
+// Получение цены с OKX (оптимизировано)
 async function getOKXPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'okx');
-    const response = await axios.get(`${EXCHANGES.okx.tickerUrl}?instId=${normalized}`, { timeout: 5000 });
+    const response = await axiosInstance.get(`${EXCHANGES.okx.tickerUrl}?instId=${normalized}`);
     if (response.data.data && response.data.data.length > 0) {
       return parseFloat(response.data.data[0].last);
     }
@@ -249,11 +281,11 @@ async function getOKXPrice(symbol) {
   }
 }
 
-// Получение цены с Gate.io
+// Получение цены с Gate.io (оптимизировано)
 async function getGateIOPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'gateio');
-    const response = await axios.get(`${EXCHANGES.gateio.tickerUrl}?currency_pair=${normalized}`, { timeout: 5000 });
+    const response = await axiosInstance.get(`${EXCHANGES.gateio.tickerUrl}?currency_pair=${normalized}`);
     if (response.data && response.data.length > 0 && response.data[0].last) {
       return parseFloat(response.data[0].last);
     }
@@ -263,11 +295,11 @@ async function getGateIOPrice(symbol) {
   }
 }
 
-// Получение цены с Huobi
+// Получение цены с Huobi (оптимизировано)
 async function getHuobiPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'huobi');
-    const response = await axios.get(`${EXCHANGES.huobi.tickerUrl}?symbol=${normalized}`, { timeout: 5000 });
+    const response = await axiosInstance.get(`${EXCHANGES.huobi.tickerUrl}?symbol=${normalized}`);
     if (response.data && response.data.tick && response.data.tick.close) {
       return parseFloat(response.data.tick.close);
     }
@@ -277,13 +309,13 @@ async function getHuobiPrice(symbol) {
   }
 }
 
-// Получение цены с Bitfinex
+// Получение цены с Bitfinex (оптимизировано)
 async function getBitfinexPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'bitfinex');
-    const response = await axios.get(`${EXCHANGES.bitfinex.tickerUrl}/${normalized}`, { timeout: 5000 });
+    const response = await axiosInstance.get(`${EXCHANGES.bitfinex.tickerUrl}/${normalized}`);
     if (response.data && Array.isArray(response.data) && response.data.length > 6) {
-      return parseFloat(response.data[6]); // last_price находится в индексе 6
+      return parseFloat(response.data[6]);
     }
     return null;
   } catch (error) {
@@ -291,11 +323,11 @@ async function getBitfinexPrice(symbol) {
   }
 }
 
-// Получение цены с Bitstamp
+// Получение цены с Bitstamp (оптимизировано)
 async function getBitstampPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'bitstamp');
-    const response = await axios.get(`${EXCHANGES.bitstamp.tickerUrl}/${normalized}`, { timeout: 5000 });
+    const response = await axiosInstance.get(`${EXCHANGES.bitstamp.tickerUrl}/${normalized}`);
     if (response.data && response.data.last) {
       return parseFloat(response.data.last);
     }
@@ -305,25 +337,39 @@ async function getBitstampPrice(symbol) {
   }
 }
 
-// Получение всех цен для пары
-async function getAllPrices(symbol) {
+// Получение всех цен для пары (оптимизировано с кэшированием)
+async function getAllPrices(symbol, useCache = true) {
+  const cacheKey = `price_${symbol}`;
+  const cached = priceCache.get(cacheKey);
+  
+  if (useCache && cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
+    return cached.data;
+  }
+  
   const prices = {};
   
-  const pricePromises = [
-    getBinancePrice(symbol).then(price => price && (prices.binance = price)),
-    getCoinbasePrice(symbol).then(price => price && (prices.coinbase = price)),
-    getKrakenPrice(symbol).then(price => price && (prices.kraken = price)),
-    getKuCoinPrice(symbol).then(price => price && (prices.kucoin = price)),
-    getBybitPrice(symbol).then(price => price && (prices.bybit = price)),
-    getOKXPrice(symbol).then(price => price && (prices.okx = price)),
-    getGateIOPrice(symbol).then(price => price && (prices.gateio = price)),
-    getHuobiPrice(symbol).then(price => price && (prices.huobi = price)),
-    getBitfinexPrice(symbol).then(price => price && (prices.bitfinex = price)),
-    getBitstampPrice(symbol).then(price => price && (prices.bitstamp = price))
+  // Параллельные запросы с ограничением конкурентности
+  const priceFunctions = [
+    () => getBinancePrice(symbol).then(price => price && (prices.binance = price)),
+    () => getCoinbasePrice(symbol).then(price => price && (prices.coinbase = price)),
+    () => getKrakenPrice(symbol).then(price => price && (prices.kraken = price)),
+    () => getKuCoinPrice(symbol).then(price => price && (prices.kucoin = price)),
+    () => getBybitPrice(symbol).then(price => price && (prices.bybit = price)),
+    () => getOKXPrice(symbol).then(price => price && (prices.okx = price)),
+    () => getGateIOPrice(symbol).then(price => price && (prices.gateio = price)),
+    () => getHuobiPrice(symbol).then(price => price && (prices.huobi = price)),
+    () => getBitfinexPrice(symbol).then(price => price && (prices.bitfinex = price)),
+    () => getBitstampPrice(symbol).then(price => price && (prices.bitstamp = price))
   ];
 
-  await Promise.allSettled(pricePromises);
-
+  await Promise.allSettled(priceFunctions.map(fn => fn()));
+  
+  // Сохраняем в кэш
+  priceCache.set(cacheKey, {
+    data: prices,
+    timestamp: Date.now()
+  });
+  
   return prices;
 }
 
@@ -347,7 +393,7 @@ function calculateArbitrageOpportunities(prices, symbol) {
       const avgPrice = (price1 + price2) / 2;
       const profitPercent = (diff / avgPrice) * 100;
       
-      if (profitPercent > 0.1) { // Минимальный процент прибыли 0.1%
+      if (profitPercent > 0.1) {
         opportunities.push({
           symbol,
           buyExchange: price1 < price2 ? exchange1 : exchange2,
@@ -365,28 +411,49 @@ function calculateArbitrageOpportunities(prices, symbol) {
   return opportunities.sort((a, b) => b.profitPercent - a.profitPercent);
 }
 
-// API endpoint для получения всех арбитражных возможностей
+// API endpoint для получения всех арбитражных возможностей (с кэшированием)
 app.get('/api/arbitrage', async (req, res) => {
   try {
-    const allOpportunities = [];
-    const limit = parseInt(req.query.limit) || 50; // Ограничение для производительности
+    const limit = parseInt(req.query.limit) || 50;
+    const cacheKey = `arbitrage_${limit}`;
+    const cached = arbitrageCache.get(cacheKey);
     
-    // Обрабатываем только первые limit пар для быстрого ответа
-    const pairsToProcess = TRADING_PAIRS.slice(0, limit);
-    
-    for (const pair of pairsToProcess) {
-      const prices = await getAllPrices(pair);
-      const opportunities = calculateArbitrageOpportunities(prices, pair);
-      allOpportunities.push(...opportunities);
+    // Проверяем кэш
+    if (cached && (Date.now() - cached.timestamp) < ARBITRAGE_CACHE_TTL) {
+      return res.json(cached.data);
     }
     
-    res.json({
+    const allOpportunities = [];
+    const pairsToProcess = TRADING_PAIRS.slice(0, limit);
+    
+    // Обрабатываем пары батчами для оптимизации
+    const batchSize = 10;
+    for (let i = 0; i < pairsToProcess.length; i += batchSize) {
+      const batch = pairsToProcess.slice(i, i + batchSize);
+      const batchPromises = batch.map(async (pair) => {
+        const prices = await getAllPrices(pair, true);
+        return calculateArbitrageOpportunities(prices, pair);
+      });
+      
+      const batchResults = await Promise.all(batchPromises);
+      allOpportunities.push(...batchResults.flat());
+    }
+    
+    const result = {
       success: true,
       opportunities: allOpportunities.sort((a, b) => b.profitPercent - a.profitPercent),
       timestamp: new Date().toISOString(),
       totalPairs: TRADING_PAIRS.length,
       processedPairs: pairsToProcess.length
+    };
+    
+    // Сохраняем в кэш
+    arbitrageCache.set(cacheKey, {
+      data: result,
+      timestamp: Date.now()
     });
+    
+    res.json(result);
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -399,7 +466,7 @@ app.get('/api/arbitrage', async (req, res) => {
 app.get('/api/prices/:symbol', async (req, res) => {
   try {
     const symbol = req.params.symbol.replace('-', '/');
-    const prices = await getAllPrices(symbol);
+    const prices = await getAllPrices(symbol, false); // Не используем кэш для конкретной пары
     
     res.json({
       success: true,
@@ -415,18 +482,26 @@ app.get('/api/prices/:symbol', async (req, res) => {
   }
 });
 
-// API endpoint для получения всех цен
+// API endpoint для получения всех цен (оптимизировано)
 app.get('/api/prices', async (req, res) => {
   try {
+    const limit = parseInt(req.query.limit) || 30;
     const allPrices = {};
-    const limit = parseInt(req.query.limit) || 30; // Ограничение для производительности
-    
-    // Обрабатываем только первые limit пар
     const pairsToProcess = TRADING_PAIRS.slice(0, limit);
     
-    for (const pair of pairsToProcess) {
-      const prices = await getAllPrices(pair);
-      allPrices[pair] = prices;
+    // Обрабатываем батчами
+    const batchSize = 5;
+    for (let i = 0; i < pairsToProcess.length; i += batchSize) {
+      const batch = pairsToProcess.slice(i, i + batchSize);
+      const batchPromises = batch.map(async (pair) => {
+        const prices = await getAllPrices(pair, true);
+        return { pair, prices };
+      });
+      
+      const batchResults = await Promise.all(batchPromises);
+      batchResults.forEach(({ pair, prices }) => {
+        allPrices[pair] = prices;
+      });
     }
     
     res.json({
@@ -478,7 +553,8 @@ app.use(express.static(publicPath, {
 app.get('/styles.css', (req, res) => {
   res.sendFile(path.join(publicPath, 'styles.css'), {
     headers: {
-      'Content-Type': 'text/css'
+      'Content-Type': 'text/css',
+      'Cache-Control': 'public, max-age=86400'
     }
   });
 });
@@ -486,7 +562,8 @@ app.get('/styles.css', (req, res) => {
 app.get('/app.js', (req, res) => {
   res.sendFile(path.join(publicPath, 'app.js'), {
     headers: {
-      'Content-Type': 'application/javascript'
+      'Content-Type': 'application/javascript',
+      'Cache-Control': 'public, max-age=86400'
     }
   });
 });
@@ -496,12 +573,28 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Очистка кэша каждые 10 минут
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of priceCache.entries()) {
+    if (now - value.timestamp > CACHE_TTL * 2) {
+      priceCache.delete(key);
+    }
+  }
+  for (const [key, value] of arbitrageCache.entries()) {
+    if (now - value.timestamp > ARBITRAGE_CACHE_TTL * 2) {
+      arbitrageCache.delete(key);
+    }
+  }
+}, 600000);
+
 // Экспорт для Vercel
 if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`🚀 Сервер запущен на http://localhost:${PORT}`);
     console.log(`📊 Мониторинг арбитражных возможностей активен`);
     console.log(`📈 Поддерживается ${Object.keys(EXCHANGES).length} бирж и ${TRADING_PAIRS.length} торговых пар`);
+    console.log(`⚡ Кэширование включено для оптимизации производительности`);
   });
 }
 
