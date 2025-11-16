@@ -4,6 +4,7 @@ let pricesUpdateInterval = null;
 let isAutoRefresh = false;
 let cachedOpportunities = [];
 let cachedPrices = {};
+let currentView = 'table';
 
 // Элементы DOM
 const refreshBtn = document.getElementById('refreshBtn');
@@ -11,10 +12,45 @@ const autoRefreshBtn = document.getElementById('autoRefreshBtn');
 const filterSelect = document.getElementById('filterSelect');
 const opportunitiesList = document.getElementById('opportunitiesList');
 const pricesTable = document.getElementById('pricesTable');
+const pricesCards = document.getElementById('cardsView');
 const lastUpdateEl = document.getElementById('lastUpdate');
 const exchangesCountEl = document.getElementById('exchangesCount');
 const pairsCountEl = document.getElementById('pairsCount');
 const opportunitiesCountEl = document.getElementById('opportunitiesCount');
+const viewToggle = document.getElementById('viewToggle');
+const viewToggleCards = document.getElementById('viewToggleCards');
+
+// Определение мобильного устройства
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+const isTablet = /iPad|Android/i.test(navigator.userAgent) && window.innerWidth >= 768 && window.innerWidth <= 1024;
+
+// Автоматическое переключение на карточки на мобильных
+if (isMobile && window.innerWidth < 769) {
+    currentView = 'cards';
+    document.getElementById('tableView').style.display = 'none';
+    pricesCards.style.display = 'grid';
+    if (viewToggle) viewToggle.classList.remove('active');
+    if (viewToggleCards) viewToggleCards.classList.add('active');
+}
+
+// Переключение вида
+if (viewToggle && viewToggleCards) {
+    viewToggle.addEventListener('click', () => {
+        currentView = 'table';
+        document.getElementById('tableView').style.display = 'block';
+        pricesCards.style.display = 'none';
+        viewToggle.classList.add('active');
+        viewToggleCards.classList.remove('active');
+    });
+
+    viewToggleCards.addEventListener('click', () => {
+        currentView = 'cards';
+        document.getElementById('tableView').style.display = 'none';
+        pricesCards.style.display = 'grid';
+        viewToggle.classList.remove('active');
+        viewToggleCards.classList.add('active');
+    });
+}
 
 // Оптимизация: Debounce функция
 function debounce(func, wait) {
@@ -97,7 +133,7 @@ async function loadArbitrageOpportunities(showLoading = true) {
     }
 }
 
-// Отображение арбитражных возможностей (оптимизировано с виртуализацией)
+// Отображение арбитражных возможностей (оптимизировано)
 function displayOpportunities(opportunities) {
     if (opportunities.length === 0) {
         opportunitiesList.innerHTML = '<div class="loading">Арбитражные возможности не найдены</div>';
@@ -171,8 +207,9 @@ function escapeHtml(text) {
 async function loadPrices(showLoading = true) {
     try {
         const tbody = pricesTable.querySelector('tbody');
-        if (showLoading && !tbody.querySelector('tr')) {
+        if (showLoading && (!tbody.querySelector('tr') || tbody.querySelector('tr').textContent.includes('Загрузка'))) {
             tbody.innerHTML = '<tr><td colspan="11" class="loading">Загрузка данных...</td></tr>';
+            if (pricesCards) pricesCards.innerHTML = '<div class="loading">Загрузка данных...</div>';
         }
         
         const response = await fetch(`${API_BASE}/prices?limit=30`, {
@@ -185,11 +222,13 @@ async function loadPrices(showLoading = true) {
         
         if (data.success) {
             updatePricesTable(data.prices);
+            updatePricesCards(data.prices);
             cachedPrices = data.prices;
             updateTimestamp();
         } else {
             if (showLoading) {
                 tbody.innerHTML = '<tr><td colspan="11" class="loading">Ошибка загрузки данных</td></tr>';
+                if (pricesCards) pricesCards.innerHTML = '<div class="loading">Ошибка загрузки данных</div>';
             }
         }
     } catch (error) {
@@ -197,6 +236,7 @@ async function loadPrices(showLoading = true) {
         const tbody = pricesTable.querySelector('tbody');
         if (showLoading) {
             tbody.innerHTML = '<tr><td colspan="11" class="loading">Ошибка подключения к серверу</td></tr>';
+            if (pricesCards) pricesCards.innerHTML = '<div class="loading">Ошибка подключения к серверу</div>';
         }
     }
 }
@@ -241,7 +281,6 @@ function updatePricesTable(prices) {
                             cell.setAttribute('data-exchange', exchange);
                             cell.setAttribute('data-pair', pair);
                             
-                            // Убираем класс updating после анимации
                             setTimeout(() => {
                                 cell.classList.remove('updating');
                             }, 500);
@@ -256,6 +295,81 @@ function updatePricesTable(prices) {
     }
 }
 
+// Обновление карточек цен (для мобильных)
+function updatePricesCards(prices) {
+    if (!pricesCards) return;
+    
+    const exchanges = ['binance', 'coinbase', 'kraken', 'kucoin', 'bybit', 'okx', 'gateio', 'huobi', 'bitfinex', 'bitstamp'];
+    const exchangeNames = {
+        binance: 'Binance',
+        coinbase: 'Coinbase',
+        kraken: 'Kraken',
+        kucoin: 'KuCoin',
+        bybit: 'Bybit',
+        okx: 'OKX',
+        gateio: 'Gate.io',
+        huobi: 'Huobi',
+        bitfinex: 'Bitfinex',
+        bitstamp: 'Bitstamp'
+    };
+    
+    // Если карточки пусты, создаем полностью
+    if (!pricesCards.querySelector('.price-card')) {
+        pricesCards.innerHTML = Object.entries(prices).map(([pair, pairPrices]) => {
+            const exchangeCards = exchanges.map(exchange => {
+                const price = pairPrices[exchange];
+                if (price) {
+                    return `
+                        <div class="price-card-exchange">
+                            <div class="price-card-exchange-name">${exchangeNames[exchange]}</div>
+                            <div class="price-card-exchange-value">$${parseFloat(price).toFixed(2)}</div>
+                        </div>
+                    `;
+                } else {
+                    return `
+                        <div class="price-card-exchange">
+                            <div class="price-card-exchange-name">${exchangeNames[exchange]}</div>
+                            <div class="price-card-exchange-value unavailable">-</div>
+                        </div>
+                    `;
+                }
+            }).join('');
+            
+            return `
+                <div class="price-card" data-pair="${pair}">
+                    <div class="price-card-header">${escapeHtml(pair)}</div>
+                    <div class="price-card-exchanges">${exchangeCards}</div>
+                </div>
+            `;
+        }).join('');
+    } else {
+        // Обновляем только изменившиеся значения
+        Object.entries(prices).forEach(([pair, pairPrices]) => {
+            const card = pricesCards.querySelector(`.price-card[data-pair="${pair}"]`);
+            if (card) {
+                exchanges.forEach(exchange => {
+                    const exchangeCard = card.querySelector(`.price-card-exchange:has(.price-card-exchange-name:contains("${exchangeNames[exchange]}"))`);
+                    if (exchangeCard) {
+                        const valueEl = exchangeCard.querySelector('.price-card-exchange-value');
+                        const newPrice = pairPrices[exchange];
+                        const oldPrice = cachedPrices[pair]?.[exchange];
+                        
+                        if (newPrice !== oldPrice && valueEl) {
+                            if (newPrice) {
+                                valueEl.className = 'price-card-exchange-value';
+                                valueEl.textContent = `$${parseFloat(newPrice).toFixed(2)}`;
+                            } else {
+                                valueEl.className = 'price-card-exchange-value unavailable';
+                                valueEl.textContent = '-';
+                            }
+                        }
+                    }
+                });
+            }
+        });
+    }
+}
+
 // Обновление временной метки
 function updateTimestamp() {
     const now = new Date();
@@ -264,7 +378,7 @@ function updateTimestamp() {
         minute: '2-digit', 
         second: '2-digit' 
     });
-    lastUpdateEl.innerHTML = `<span class="realtime-indicator"></span>Последнее обновление: ${timeString}`;
+    lastUpdateEl.innerHTML = `<span class="realtime-indicator"></span>Обновлено: ${timeString}`;
 }
 
 // Переключение автообновления
@@ -275,7 +389,7 @@ function toggleAutoRefresh() {
         autoRefreshInterval = null;
         pricesUpdateInterval = null;
         isAutoRefresh = false;
-        autoRefreshBtn.textContent = '▶️ Автообновление';
+        autoRefreshBtn.textContent = '▶️ Авто';
         autoRefreshBtn.classList.remove('active');
     } else {
         // Обновление арбитражных возможностей каждые 30 секунд
@@ -289,7 +403,7 @@ function toggleAutoRefresh() {
         }, 3000);
         
         isAutoRefresh = true;
-        autoRefreshBtn.textContent = '⏸️ Остановить';
+        autoRefreshBtn.textContent = '⏸️ Стоп';
         autoRefreshBtn.classList.add('active');
         
         // Сразу запускаем обновление цен
@@ -315,7 +429,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadArbitrageOpportunities();
     loadPrices();
     
-    // Автоматически включаем автообновление
+    // Автоматически включаем автообновление через 2 секунды
     setTimeout(() => {
         toggleAutoRefresh();
     }, 2000);
@@ -334,3 +448,29 @@ document.addEventListener('visibilitychange', () => {
         }
     }
 });
+
+// Оптимизация для touch-событий
+if ('ontouchstart' in window) {
+    document.body.classList.add('touch-device');
+    
+    // Улучшенная обработка touch для кнопок
+    [refreshBtn, autoRefreshBtn].forEach(btn => {
+        btn.addEventListener('touchstart', function(e) {
+            this.style.transform = 'scale(0.95)';
+        }, { passive: true });
+        
+        btn.addEventListener('touchend', function(e) {
+            this.style.transform = '';
+        }, { passive: true });
+    });
+}
+
+// Предотвращение двойного масштабирования на iOS
+let lastTouchEnd = 0;
+document.addEventListener('touchend', function (event) {
+    const now = Date.now();
+    if (now - lastTouchEnd <= 300) {
+        event.preventDefault();
+    }
+    lastTouchEnd = now;
+}, false);
