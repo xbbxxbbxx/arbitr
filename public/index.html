@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Крипто Арбитраж - Межбиржевая торговля</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>💰 Крипто Арбитраж Платформа</h1>
+            <p class="subtitle">Найдите лучшие возможности для межбиржевой торговли</p>
+            <div class="status-bar">
+                <span id="status" class="status-indicator">🟢 Активен</span>
+                <span id="lastUpdate">Обновление...</span>
+            </div>
+        </header>
+
+        <div class="controls">
+            <button id="refreshBtn" class="btn btn-primary">🔄 Обновить данные</button>
+            <button id="autoRefreshBtn" class="btn btn-secondary">⏸️ Автообновление</button>
+            <select id="filterSelect" class="filter-select">
+                <option value="all">Все возможности</option>
+                <option value="high">Высокая прибыль (>1%)</option>
+                <option value="medium">Средняя прибыль (0.5-1%)</option>
+                <option value="low">Низкая прибыль (<0.5%)</option>
+            </select>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Активных возможностей</div>
+                <div class="stat-value" id="totalOpportunities">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Максимальная прибыль</div>
+                <div class="stat-value" id="maxProfit">0%</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Мониторинг бирж</div>
+                <div class="stat-value">3</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Торговых пар</div>
+                <div class="stat-value">8</div>
+            </div>
+        </div>
+
+        <div class="opportunities-section">
+            <h2>🎯 Арбитражные возможности</h2>
+            <div id="opportunitiesList" class="opportunities-list">
+                <div class="loading">Загрузка данных...</div>
+            </div>
+        </div>
+
+        <div class="prices-section">
+            <h2>📈 Текущие цены</h2>
+            <div id="pricesTable" class="prices-table">
+                <div class="loading">Загрузка цен...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
+
