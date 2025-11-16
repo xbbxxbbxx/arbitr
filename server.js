@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Кэш для цен (TTL: 3 секунды для реального времени)
+// Кэш для цен (TTL: 3 секунды)
 const priceCache = new Map();
 const CACHE_TTL = 3000;
 
@@ -26,7 +26,7 @@ const axiosInstance = axios.create({
   }
 });
 
-// Поддерживаемые биржи
+// Расширенный список бирж
 const EXCHANGES = {
   binance: {
     name: 'Binance',
@@ -67,82 +67,126 @@ const EXCHANGES = {
   bitstamp: {
     name: 'Bitstamp',
     tickerUrl: 'https://www.bitstamp.net/api/v2/ticker'
+  },
+  gemini: {
+    name: 'Gemini',
+    tickerUrl: 'https://api.gemini.com/v1/pubticker'
+  },
+  bitget: {
+    name: 'Bitget',
+    tickerUrl: 'https://api.bitget.com/api/spot/v1/market/ticker'
+  },
+  mexc: {
+    name: 'MEXC',
+    tickerUrl: 'https://api.mexc.com/api/v3/ticker/price'
   }
 };
 
-// Торговые пары
+// Очень расширенный список торговых пар
 const TRADING_PAIRS = [
-  'BTC/USDT', 'BTC/USD', 'BTC/EUR', 'BTC/GBP', 'BTC/BUSD', 'BTC/USDC',
+  // BTC пары
+  'BTC/USDT', 'BTC/USD', 'BTC/EUR', 'BTC/GBP', 'BTC/BUSD', 'BTC/USDC', 'BTC/ETH',
+  // ETH пары
   'ETH/USDT', 'ETH/USD', 'ETH/EUR', 'ETH/BTC', 'ETH/BUSD', 'ETH/USDC',
-  'BNB/USDT', 'BNB/BTC', 'BNB/USD',
-  'SOL/USDT', 'SOL/BTC', 'SOL/USD',
-  'ADA/USDT', 'ADA/BTC', 'ADA/USD',
-  'XRP/USDT', 'XRP/BTC', 'XRP/USD',
-  'DOT/USDT', 'DOT/BTC', 'DOT/USD',
-  'DOGE/USDT', 'DOGE/BTC', 'DOGE/USD',
-  'MATIC/USDT', 'MATIC/BTC', 'MATIC/USD',
-  'AVAX/USDT', 'AVAX/BTC', 'AVAX/USD',
-  'LINK/USDT', 'LINK/BTC', 'LINK/USD',
-  'UNI/USDT', 'UNI/BTC', 'UNI/USD',
-  'ATOM/USDT', 'ATOM/BTC', 'ATOM/USD',
-  'LTC/USDT', 'LTC/BTC', 'LTC/USD',
-  'BCH/USDT', 'BCH/BTC', 'BCH/USD',
-  'XLM/USDT', 'XLM/BTC', 'XLM/USD',
-  'ALGO/USDT', 'ALGO/BTC', 'ALGO/USD',
-  'VET/USDT', 'VET/BTC', 'VET/USD',
-  'ICP/USDT', 'ICP/BTC', 'ICP/USD',
-  'FIL/USDT', 'FIL/BTC', 'FIL/USD',
-  'TRX/USDT', 'TRX/BTC', 'TRX/USD',
-  'ETC/USDT', 'ETC/BTC', 'ETC/USD',
-  'EOS/USDT', 'EOS/BTC', 'EOS/USD',
-  'AAVE/USDT', 'AAVE/BTC', 'AAVE/USD',
-  'MKR/USDT', 'MKR/BTC', 'MKR/USD',
-  'COMP/USDT', 'COMP/BTC', 'COMP/USD',
-  'SUSHI/USDT', 'SUSHI/BTC', 'SUSHI/USD',
-  'SNX/USDT', 'SNX/BTC', 'SNX/USD',
-  'YFI/USDT', 'YFI/BTC', 'YFI/USD',
-  'CRV/USDT', 'CRV/BTC', 'CRV/USD',
-  '1INCH/USDT', '1INCH/BTC', '1INCH/USD',
-  'GRT/USDT', 'GRT/BTC', 'GRT/USD',
-  'NEAR/USDT', 'NEAR/BTC', 'NEAR/USD',
-  'FTM/USDT', 'FTM/BTC', 'FTM/USD',
-  'SAND/USDT', 'SAND/BTC', 'SAND/USD',
-  'MANA/USDT', 'MANA/BTC', 'MANA/USD',
-  'AXS/USDT', 'AXS/BTC', 'AXS/USD',
-  'THETA/USDT', 'THETA/BTC', 'THETA/USD',
-  'ENJ/USDT', 'ENJ/BTC', 'ENJ/USD',
-  'CHZ/USDT', 'CHZ/BTC', 'CHZ/USD',
-  'HBAR/USDT', 'HBAR/BTC', 'HBAR/USD',
-  'FLOW/USDT', 'FLOW/BTC', 'FLOW/USD',
-  'EGLD/USDT', 'EGLD/BTC', 'EGLD/USD',
-  'ZIL/USDT', 'ZIL/BTC', 'ZIL/USD',
-  'XTZ/USDT', 'XTZ/BTC', 'XTZ/USD',
-  'ZEC/USDT', 'ZEC/BTC', 'ZEC/USD',
-  'DASH/USDT', 'DASH/BTC', 'DASH/USD',
-  'WAVES/USDT', 'WAVES/BTC', 'WAVES/USD',
-  'IOTA/USDT', 'IOTA/BTC', 'IOTA/USD',
-  'NEO/USDT', 'NEO/BTC', 'NEO/USD',
-  'QTUM/USDT', 'QTUM/BTC', 'QTUM/USD',
-  'ONT/USDT', 'ONT/BTC', 'ONT/USD',
-  'ZRX/USDT', 'ZRX/BTC', 'ZRX/USD',
-  'BAT/USDT', 'BAT/BTC', 'BAT/USD',
-  'OMG/USDT', 'OMG/BTC', 'OMG/USD',
-  'KSM/USDT', 'KSM/BTC', 'KSM/USD',
-  'LUNA/USDT', 'LUNA/BTC', 'LUNA/USD',
-  'ROSE/USDT', 'ROSE/BTC', 'ROSE/USD',
-  'CELO/USDT', 'CELO/BTC', 'CELO/USD',
-  'KLAY/USDT', 'KLAY/BTC', 'KLAY/USD',
-  'GALA/USDT', 'GALA/BTC', 'GALA/USD',
-  'APE/USDT', 'APE/BTC', 'APE/USD',
-  'GMT/USDT', 'GMT/BTC', 'GMT/USD',
-  'APT/USDT', 'APT/BTC', 'APT/USD',
-  'OP/USDT', 'OP/BTC', 'OP/USD',
-  'ARB/USDT', 'ARB/BTC', 'ARB/USD',
-  'INJ/USDT', 'INJ/BTC', 'INJ/USD',
-  'SUI/USDT', 'SUI/BTC', 'SUI/USD',
-  'PEPE/USDT', 'PEPE/BTC', 'PEPE/USD',
-  'FLOKI/USDT', 'FLOKI/BTC', 'FLOKI/USD',
-  'SHIB/USDT', 'SHIB/BTC', 'SHIB/USD'
+  // Топ альткоины
+  'BNB/USDT', 'BNB/BTC', 'BNB/USD', 'BNB/ETH',
+  'SOL/USDT', 'SOL/BTC', 'SOL/USD', 'SOL/ETH',
+  'ADA/USDT', 'ADA/BTC', 'ADA/USD', 'ADA/ETH',
+  'XRP/USDT', 'XRP/BTC', 'XRP/USD', 'XRP/ETH',
+  'DOT/USDT', 'DOT/BTC', 'DOT/USD', 'DOT/ETH',
+  'DOGE/USDT', 'DOGE/BTC', 'DOGE/USD', 'DOGE/ETH',
+  'MATIC/USDT', 'MATIC/BTC', 'MATIC/USD', 'MATIC/ETH',
+  'AVAX/USDT', 'AVAX/BTC', 'AVAX/USD', 'AVAX/ETH',
+  'LINK/USDT', 'LINK/BTC', 'LINK/USD', 'LINK/ETH',
+  'UNI/USDT', 'UNI/BTC', 'UNI/USD', 'UNI/ETH',
+  'ATOM/USDT', 'ATOM/BTC', 'ATOM/USD', 'ATOM/ETH',
+  'LTC/USDT', 'LTC/BTC', 'LTC/USD', 'LTC/ETH',
+  'BCH/USDT', 'BCH/BTC', 'BCH/USD', 'BCH/ETH',
+  'XLM/USDT', 'XLM/BTC', 'XLM/USD', 'XLM/ETH',
+  'ALGO/USDT', 'ALGO/BTC', 'ALGO/USD', 'ALGO/ETH',
+  'VET/USDT', 'VET/BTC', 'VET/USD', 'VET/ETH',
+  'ICP/USDT', 'ICP/BTC', 'ICP/USD', 'ICP/ETH',
+  'FIL/USDT', 'FIL/BTC', 'FIL/USD', 'FIL/ETH',
+  'TRX/USDT', 'TRX/BTC', 'TRX/USD', 'TRX/ETH',
+  'ETC/USDT', 'ETC/BTC', 'ETC/USD', 'ETC/ETH',
+  'EOS/USDT', 'EOS/BTC', 'EOS/USD', 'EOS/ETH',
+  // DeFi токены
+  'AAVE/USDT', 'AAVE/BTC', 'AAVE/USD', 'AAVE/ETH',
+  'MKR/USDT', 'MKR/BTC', 'MKR/USD', 'MKR/ETH',
+  'COMP/USDT', 'COMP/BTC', 'COMP/USD', 'COMP/ETH',
+  'SUSHI/USDT', 'SUSHI/BTC', 'SUSHI/USD', 'SUSHI/ETH',
+  'SNX/USDT', 'SNX/BTC', 'SNX/USD', 'SNX/ETH',
+  'YFI/USDT', 'YFI/BTC', 'YFI/USD', 'YFI/ETH',
+  'CRV/USDT', 'CRV/BTC', 'CRV/USD', 'CRV/ETH',
+  '1INCH/USDT', '1INCH/BTC', '1INCH/USD', '1INCH/ETH',
+  'GRT/USDT', 'GRT/BTC', 'GRT/USD', 'GRT/ETH',
+  // Layer 1
+  'NEAR/USDT', 'NEAR/BTC', 'NEAR/USD', 'NEAR/ETH',
+  'FTM/USDT', 'FTM/BTC', 'FTM/USD', 'FTM/ETH',
+  'HBAR/USDT', 'HBAR/BTC', 'HBAR/USD', 'HBAR/ETH',
+  'FLOW/USDT', 'FLOW/BTC', 'FLOW/USD', 'FLOW/ETH',
+  'EGLD/USDT', 'EGLD/BTC', 'EGLD/USD', 'EGLD/ETH',
+  'ZIL/USDT', 'ZIL/BTC', 'ZIL/USD', 'ZIL/ETH',
+  'XTZ/USDT', 'XTZ/BTC', 'XTZ/USD', 'XTZ/ETH',
+  'ZEC/USDT', 'ZEC/BTC', 'ZEC/USD', 'ZEC/ETH',
+  'DASH/USDT', 'DASH/BTC', 'DASH/USD', 'DASH/ETH',
+  'WAVES/USDT', 'WAVES/BTC', 'WAVES/USD', 'WAVES/ETH',
+  'IOTA/USDT', 'IOTA/BTC', 'IOTA/USD', 'IOTA/ETH',
+  'NEO/USDT', 'NEO/BTC', 'NEO/USD', 'NEO/ETH',
+  'QTUM/USDT', 'QTUM/BTC', 'QTUM/USD', 'QTUM/ETH',
+  'ONT/USDT', 'ONT/BTC', 'ONT/USD', 'ONT/ETH',
+  'ZRX/USDT', 'ZRX/BTC', 'ZRX/USD', 'ZRX/ETH',
+  'BAT/USDT', 'BAT/BTC', 'BAT/USD', 'BAT/ETH',
+  'OMG/USDT', 'OMG/BTC', 'OMG/USD', 'OMG/ETH',
+  'KSM/USDT', 'KSM/BTC', 'KSM/USD', 'KSM/ETH',
+  // NFT/Gaming
+  'SAND/USDT', 'SAND/BTC', 'SAND/USD', 'SAND/ETH',
+  'MANA/USDT', 'MANA/BTC', 'MANA/USD', 'MANA/ETH',
+  'AXS/USDT', 'AXS/BTC', 'AXS/USD', 'AXS/ETH',
+  'THETA/USDT', 'THETA/BTC', 'THETA/USD', 'THETA/ETH',
+  'ENJ/USDT', 'ENJ/BTC', 'ENJ/USD', 'ENJ/ETH',
+  'CHZ/USDT', 'CHZ/BTC', 'CHZ/USD', 'CHZ/ETH',
+  'GALA/USDT', 'GALA/BTC', 'GALA/USD', 'GALA/ETH',
+  'APE/USDT', 'APE/BTC', 'APE/USD', 'APE/ETH',
+  'GMT/USDT', 'GMT/BTC', 'GMT/USD', 'GMT/ETH',
+  // Layer 2
+  'OP/USDT', 'OP/BTC', 'OP/USD', 'OP/ETH',
+  'ARB/USDT', 'ARB/BTC', 'ARB/USD', 'ARB/ETH',
+  // Новые монеты
+  'APT/USDT', 'APT/BTC', 'APT/USD', 'APT/ETH',
+  'INJ/USDT', 'INJ/BTC', 'INJ/USD', 'INJ/ETH',
+  'SUI/USDT', 'SUI/BTC', 'SUI/USD', 'SUI/ETH',
+  'TIA/USDT', 'TIA/BTC', 'TIA/USD', 'TIA/ETH',
+  'SEI/USDT', 'SEI/BTC', 'SEI/USD', 'SEI/ETH',
+  'BLUR/USDT', 'BLUR/BTC', 'BLUR/USD', 'BLUR/ETH',
+  'JTO/USDT', 'JTO/BTC', 'JTO/USD', 'JTO/ETH',
+  'WLD/USDT', 'WLD/BTC', 'WLD/USD', 'WLD/ETH',
+  'PYTH/USDT', 'PYTH/BTC', 'PYTH/USD', 'PYTH/ETH',
+  // Мемкоины
+  'PEPE/USDT', 'PEPE/BTC', 'PEPE/USD', 'PEPE/ETH',
+  'FLOKI/USDT', 'FLOKI/BTC', 'FLOKI/USD', 'FLOKI/ETH',
+  'SHIB/USDT', 'SHIB/BTC', 'SHIB/USD', 'SHIB/ETH',
+  'BONK/USDT', 'BONK/BTC', 'BONK/USD', 'BONK/ETH',
+  // Дополнительные популярные
+  'ROSE/USDT', 'ROSE/BTC', 'ROSE/USD', 'ROSE/ETH',
+  'CELO/USDT', 'CELO/BTC', 'CELO/USD', 'CELO/ETH',
+  'KLAY/USDT', 'KLAY/BTC', 'KLAY/USD', 'KLAY/ETH',
+  'LUNA/USDT', 'LUNA/BTC', 'LUNA/USD', 'LUNA/ETH',
+  'RUNE/USDT', 'RUNE/BTC', 'RUNE/USD', 'RUNE/ETH',
+  'CAKE/USDT', 'CAKE/BTC', 'CAKE/USD', 'CAKE/ETH',
+  'BAKE/USDT', 'BAKE/BTC', 'BAKE/USD', 'BAKE/ETH',
+  'SFP/USDT', 'SFP/BTC', 'SFP/USD', 'SFP/ETH',
+  'DYDX/USDT', 'DYDX/BTC', 'DYDX/USD', 'DYDX/ETH',
+  'ENS/USDT', 'ENS/BTC', 'ENS/USD', 'ENS/ETH',
+  'IMX/USDT', 'IMX/BTC', 'IMX/USD', 'IMX/ETH',
+  'LRC/USDT', 'LRC/BTC', 'LRC/USD', 'LRC/ETH',
+  'RNDR/USDT', 'RNDR/BTC', 'RNDR/USD', 'RNDR/ETH',
+  'STX/USDT', 'STX/BTC', 'STX/USD', 'STX/ETH',
+  'APT/USDT', 'APT/BTC', 'APT/USD', 'APT/ETH',
+  'HBAR/USDT', 'HBAR/BTC', 'HBAR/USD', 'HBAR/ETH',
+  'QNT/USDT', 'QNT/BTC', 'QNT/USD', 'QNT/ETH',
+  'EOS/USDT', 'EOS/BTC', 'EOS/USD', 'EOS/ETH',
+  'FLOW/USDT', 'FLOW/BTC', 'FLOW/USD', 'FLOW/ETH'
 ];
 
 // Нормализация символов
@@ -159,6 +203,9 @@ function normalizeSymbol(symbol, exchange) {
   if (exchange === 'huobi') return `${base.toLowerCase()}${quote.toLowerCase()}`;
   if (exchange === 'bitfinex') return `t${base}${quote}`;
   if (exchange === 'bitstamp') return `${base.toLowerCase()}${quote.toLowerCase()}`;
+  if (exchange === 'gemini') return `${base.toLowerCase()}${quote.toLowerCase()}`;
+  if (exchange === 'bitget') return `${base}${quote}`;
+  if (exchange === 'mexc') return `${base}${quote}`;
   return symbol;
 }
 
@@ -289,6 +336,42 @@ async function getBitstampPrice(symbol) {
   }
 }
 
+async function getGeminiPrice(symbol) {
+  try {
+    const normalized = normalizeSymbol(symbol, 'gemini');
+    const response = await axiosInstance.get(`${EXCHANGES.gemini.tickerUrl}/${normalized}`);
+    if (response.data && response.data.last) {
+      return parseFloat(response.data.last);
+    }
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function getBitgetPrice(symbol) {
+  try {
+    const normalized = normalizeSymbol(symbol, 'bitget');
+    const response = await axiosInstance.get(`${EXCHANGES.bitget.tickerUrl}?symbol=${normalized}`);
+    if (response.data && response.data.data && response.data.data.close) {
+      return parseFloat(response.data.data.close);
+    }
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function getMEXCPrice(symbol) {
+  try {
+    const normalized = normalizeSymbol(symbol, 'mexc');
+    const response = await axiosInstance.get(`${EXCHANGES.mexc.tickerUrl}?symbol=${normalized}`);
+    return parseFloat(response.data.price);
+  } catch (error) {
+    return null;
+  }
+}
+
 // Получение всех цен с кэшированием
 async function getAllPrices(symbol, useCache = true) {
   const cacheKey = `price_${symbol}`;
@@ -310,7 +393,10 @@ async function getAllPrices(symbol, useCache = true) {
     getGateIOPrice(symbol).then(price => price && (prices.gateio = price)),
     getHuobiPrice(symbol).then(price => price && (prices.huobi = price)),
     getBitfinexPrice(symbol).then(price => price && (prices.bitfinex = price)),
-    getBitstampPrice(symbol).then(price => price && (prices.bitstamp = price))
+    getBitstampPrice(symbol).then(price => price && (prices.bitstamp = price)),
+    getGeminiPrice(symbol).then(price => price && (prices.gemini = price)),
+    getBitgetPrice(symbol).then(price => price && (prices.bitget = price)),
+    getMEXCPrice(symbol).then(price => price && (prices.mexc = price))
   ];
 
   await Promise.allSettled(pricePromises);
@@ -351,7 +437,7 @@ function calculateArbitrageOpportunities(prices, symbol) {
           buyPrice: price1 < price2 ? price1 : price2,
           sellPrice: price1 < price2 ? price2 : price1,
           profit: diff,
-          profitPercent: profitPercent.toFixed(2),
+          profitPercent: parseFloat(profitPercent.toFixed(2)),
           timestamp: new Date().toISOString()
         });
       }
@@ -364,7 +450,7 @@ function calculateArbitrageOpportunities(prices, symbol) {
 // API endpoints
 app.get('/api/arbitrage', async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 50;
+    const limit = parseInt(req.query.limit) || 100;
     const cacheKey = `arbitrage_${limit}`;
     const cached = arbitrageCache.get(cacheKey);
     
@@ -430,7 +516,7 @@ app.get('/api/prices/:symbol', async (req, res) => {
 
 app.get('/api/prices', async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 30;
+    const limit = parseInt(req.query.limit) || 50;
     const allPrices = {};
     const pairsToProcess = TRADING_PAIRS.slice(0, limit);
     
@@ -520,4 +606,3 @@ if (require.main === module) {
 }
 
 module.exports = app;
-

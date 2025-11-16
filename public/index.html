@@ -5,119 +5,239 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <title>CRYPTO ARBITRAGE TERMINAL</title>
+    <title>Крипто Арбитраж - Межбиржевая торговля</title>
     <link rel="stylesheet" href="/styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="matrix-bg"></div>
-    <div class="container">
-        <header>
-            <div class="terminal-header">
-                <div class="terminal-window">
-                    <div class="terminal-buttons">
-                        <span class="btn-close"></span>
-                        <span class="btn-minimize"></span>
-                        <span class="btn-maximize"></span>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="main-header">
+            <div class="header-content">
+                <div class="logo-section">
+                    <div class="logo-icon">💎</div>
+                    <div class="logo-text">
+                        <h1>Крипто Арбитраж</h1>
+                        <p class="tagline">Межбиржевая торговля</p>
                     </div>
-                    <div class="terminal-title">CRYPTO_ARBITRAGE.exe</div>
+                </div>
+                <div class="header-stats">
+                    <div class="mini-stat">
+                        <span class="mini-stat-label">Бирж</span>
+                        <span class="mini-stat-value" id="exchangesCount">-</span>
+                    </div>
+                    <div class="mini-stat">
+                        <span class="mini-stat-label">Пар</span>
+                        <span class="mini-stat-value" id="pairsCount">-</span>
+                    </div>
+                    <div class="mini-stat">
+                        <span class="mini-stat-label">Возможностей</span>
+                        <span class="mini-stat-value" id="opportunitiesCount">0</span>
+                    </div>
                 </div>
             </div>
-            <h1 class="glitch" data-text="CRYPTO ARBITRAGE">CRYPTO ARBITRAGE</h1>
-            <p class="subtitle typing-effect">> INITIALIZING TRADING SYSTEMS...</p>
         </header>
 
-        <div class="controls">
-            <button id="refreshBtn" class="btn btn-hacker">
-                <span class="btn-text">[REFRESH]</span>
-                <span class="btn-glow"></span>
-            </button>
-            <button id="autoRefreshBtn" class="btn btn-hacker">
-                <span class="btn-text">[AUTO]</span>
-                <span class="btn-glow"></span>
-            </button>
-            <select id="filterSelect" class="filter-select hacker-select">
-                <option value="all">[ALL OPPORTUNITIES]</option>
-                <option value="high">[HIGH PROFIT >1%]</option>
-                <option value="medium">[MEDIUM 0.5-1%]</option>
-                <option value="low">[LOW <0.5%]</option>
-            </select>
-        </div>
-
-        <div class="stats">
-            <div class="stat-card hacker-card">
-                <div class="stat-label">EXCHANGES</div>
-                <div class="stat-value" id="exchangesCount">-</div>
-                <div class="stat-line"></div>
-            </div>
-            <div class="stat-card hacker-card">
-                <div class="stat-label">TRADING PAIRS</div>
-                <div class="stat-value" id="pairsCount">-</div>
-                <div class="stat-line"></div>
-            </div>
-            <div class="stat-card hacker-card">
-                <div class="stat-label">OPPORTUNITIES</div>
-                <div class="stat-value" id="opportunitiesCount">0</div>
-                <div class="stat-line"></div>
-            </div>
-        </div>
-
-        <div class="content">
-            <div class="opportunities-section hacker-section">
-                <h2 class="section-title">
-                    <span class="prompt">></span>
-                    <span class="title-text">ARBITRAGE OPPORTUNITIES</span>
-                    <span class="cursor-blink">_</span>
-                </h2>
-                <div id="opportunitiesList" class="opportunities-list">
-                    <div class="loading">> LOADING DATA...</div>
-                </div>
-            </div>
-
-            <div class="prices-section hacker-section">
-                <h2 class="section-title">
-                    <span class="prompt">></span>
-                    <span class="title-text">EXCHANGE PRICES</span>
-                    <span class="cursor-blink">_</span>
-                </h2>
-                <div class="mobile-prices-toggle">
-                    <button id="viewToggle" class="btn-toggle active" data-view="table">[TABLE]</button>
-                    <button id="viewToggleCards" class="btn-toggle" data-view="cards">[CARDS]</button>
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Controls Panel -->
+            <section class="controls-panel">
+                <div class="controls-row">
+                    <button id="refreshBtn" class="btn btn-primary">
+                        <span class="btn-icon">🔄</span>
+                        <span>Обновить</span>
+                    </button>
+                    <button id="autoRefreshBtn" class="btn btn-secondary">
+                        <span class="btn-icon">▶️</span>
+                        <span id="autoRefreshText">Автообновление</span>
+                    </button>
+                    <button id="exportBtn" class="btn btn-outline">
+                        <span class="btn-icon">📥</span>
+                        <span>Экспорт</span>
+                    </button>
+                    <button id="notificationsBtn" class="btn btn-outline">
+                        <span class="btn-icon">🔔</span>
+                        <span>Уведомления</span>
+                    </button>
                 </div>
                 
-                <div id="tableView" class="table-container">
-                    <table id="pricesTable" class="prices-table hacker-table">
-                        <thead>
-                            <tr>
-                                <th>PAIR</th>
-                                <th>BINANCE</th>
-                                <th>COINBASE</th>
-                                <th>KRAKEN</th>
-                                <th>KUCOIN</th>
-                                <th>BYBIT</th>
-                                <th>OKX</th>
-                                <th>GATE.IO</th>
-                                <th>HUOBI</th>
-                                <th>BITFINEX</th>
-                                <th>BITSTAMP</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td colspan="11" class="loading">> LOADING DATA...</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <div class="filters-row">
+                    <div class="filter-group">
+                        <label>Фильтр по прибыли:</label>
+                        <div class="profit-filters">
+                            <button class="profit-filter-btn active" data-filter="all">Все</button>
+                            <button class="profit-filter-btn" data-filter="0.5-1">0.5% - 1%</button>
+                            <button class="profit-filter-btn" data-filter="1-5">1% - 5%</button>
+                            <button class="profit-filter-btn" data-filter="5-50">5% - 50%</button>
+                        </div>
+                    </div>
+                    <div class="filter-group">
+                        <label>Сортировка:</label>
+                        <select id="sortSelect" class="custom-select">
+                            <option value="profit-desc">Прибыль ↓</option>
+                            <option value="profit-asc">Прибыль ↑</option>
+                            <option value="symbol-asc">Пара A-Z</option>
+                            <option value="symbol-desc">Пара Z-A</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Поиск:</label>
+                        <input type="text" id="searchInput" class="search-input" placeholder="BTC, ETH, BNB...">
+                    </div>
+                </div>
+            </section>
+
+            <!-- Stats Cards -->
+            <section class="stats-grid">
+                <div class="stat-card stat-primary">
+                    <div class="stat-icon">🏦</div>
+                    <div class="stat-info">
+                        <div class="stat-label">Всего бирж</div>
+                        <div class="stat-value" id="exchangesCountCard">-</div>
+                    </div>
+                </div>
+                <div class="stat-card stat-success">
+                    <div class="stat-icon">📊</div>
+                    <div class="stat-info">
+                        <div class="stat-label">Торговых пар</div>
+                        <div class="stat-value" id="pairsCountCard">-</div>
+                    </div>
+                </div>
+                <div class="stat-card stat-warning">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-info">
+                        <div class="stat-label">Найдено возможностей</div>
+                        <div class="stat-value" id="opportunitiesCountCard">0</div>
+                    </div>
+                </div>
+                <div class="stat-card stat-info">
+                    <div class="stat-icon">⚡</div>
+                    <div class="stat-info">
+                        <div class="stat-label">Макс. прибыль</div>
+                        <div class="stat-value" id="maxProfit">-</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Opportunities Section -->
+            <section class="opportunities-section">
+                <div class="section-header">
+                    <h2>🎯 Арбитражные возможности</h2>
+                    <div class="section-actions">
+                        <button id="toggleViewBtn" class="view-toggle-btn" title="Переключить вид">
+                            <span>📋</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="profit-categories">
+                    <div class="category-section" data-category="high">
+                        <div class="category-header">
+                            <h3>🔥 Высокая прибыль (5% - 50%)</h3>
+                            <span class="category-count" id="countHigh">0</span>
+                        </div>
+                        <div id="opportunitiesHigh" class="opportunities-list"></div>
+                    </div>
+                    
+                    <div class="category-section" data-category="medium">
+                        <div class="category-header">
+                            <h3>⭐ Средняя прибыль (1% - 5%)</h3>
+                            <span class="category-count" id="countMedium">0</span>
+                        </div>
+                        <div id="opportunitiesMedium" class="opportunities-list"></div>
+                    </div>
+                    
+                    <div class="category-section" data-category="low">
+                        <div class="category-header">
+                            <h3>💡 Низкая прибыль (0.5% - 1%)</h3>
+                            <span class="category-count" id="countLow">0</span>
+                        </div>
+                        <div id="opportunitiesLow" class="opportunities-list"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Prices Section -->
+            <section class="prices-section">
+                <div class="section-header">
+                    <h2>📊 Цены на биржах</h2>
+                    <div class="view-toggle-mobile">
+                        <button id="viewToggle" class="view-btn active" data-view="table">Таблица</button>
+                        <button id="viewToggleCards" class="view-btn" data-view="cards">Карточки</button>
+                    </div>
+                </div>
+                
+                <div id="tableView" class="table-view">
+                    <div class="table-wrapper">
+                        <table id="pricesTable" class="prices-table">
+                            <thead>
+                                <tr>
+                                    <th>Пара</th>
+                                    <th>Binance</th>
+                                    <th>Coinbase</th>
+                                    <th>Kraken</th>
+                                    <th>KuCoin</th>
+                                    <th>Bybit</th>
+                                    <th>OKX</th>
+                                    <th>Gate.io</th>
+                                    <th>Huobi</th>
+                                    <th>Bitfinex</th>
+                                    <th>Bitstamp</th>
+                                    <th>Gemini</th>
+                                    <th>Bitget</th>
+                                    <th>MEXC</th>
+                                    <th>Арбитраж</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="15" class="loading">Загрузка данных...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
-                <div id="cardsView" class="prices-cards" style="display: none;">
+                <div id="cardsView" class="cards-view" style="display: none;">
+                    <div id="pricesCards" class="prices-cards-grid"></div>
                 </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="main-footer">
+            <div class="footer-content">
+                <p class="status-text">
+                    <span class="status-indicator"></span>
+                    <span id="statusText">Система активна</span>
+                </p>
+                <p class="timestamp" id="lastUpdate">Последнее обновление: -</p>
+            </div>
+        </footer>
+
+        <!-- Notification Panel -->
+        <div id="notificationPanel" class="notification-panel">
+            <div class="notification-header">
+                <h3>🔔 Уведомления</h3>
+                <button id="closeNotifications" class="close-btn">×</button>
+            </div>
+            <div class="notification-settings">
+                <label class="setting-item">
+                    <input type="checkbox" id="notifyHigh">
+                    <span>Уведомлять о прибыли >5%</span>
+                </label>
+                <label class="setting-item">
+                    <input type="checkbox" id="notifyMedium">
+                    <span>Уведомлять о прибыли 1-5%</span>
+                </label>
+                <label class="setting-item">
+                    <input type="range" id="profitThreshold" min="0.5" max="10" step="0.5" value="1">
+                    <span>Минимальный порог: <span id="thresholdValue">1%</span></span>
+                </label>
             </div>
         </div>
-
-        <footer class="hacker-footer">
-            <p class="footer-text">> SYSTEM STATUS: <span class="status-online">ONLINE</span></p>
-            <p class="timestamp" id="lastUpdate">> LAST UPDATE: -</p>
-        </footer>
     </div>
 
     <script src="/app.js"></script>
