@@ -8,7 +8,6 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static('public'));
 
 // Поддерживаемые биржи и их API endpoints
 const EXCHANGES = {
@@ -205,6 +204,31 @@ app.get('/api/prices', async (req, res) => {
   }
 });
 
+// Раздача статических файлов (должно быть ДО других маршрутов)
+const publicPath = path.join(__dirname, 'public');
+app.use(express.static(publicPath, {
+  maxAge: '1d',
+  etag: true
+}));
+
+// Явные маршруты для статических файлов (для Vercel)
+app.get('/styles.css', (req, res) => {
+  res.sendFile(path.join(publicPath, 'styles.css'), {
+    headers: {
+      'Content-Type': 'text/css'
+    }
+  });
+});
+
+app.get('/app.js', (req, res) => {
+  res.sendFile(path.join(publicPath, 'app.js'), {
+    headers: {
+      'Content-Type': 'application/javascript'
+    }
+  });
+});
+
+// Главная страница
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -219,4 +243,3 @@ if (require.main === module) {
 
 // Для Vercel serverless
 module.exports = app;
-
