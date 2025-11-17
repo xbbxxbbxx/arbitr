@@ -334,8 +334,11 @@ async function loadArbitrageOpportunities(showLoading = true) {
         const data = await response.json();
         
         if (data.success) {
-            // Сохраняем предыдущие значения перед обновлением
-            const currentPreviousValues = new Map(previousOpportunities);
+            // Сохраняем предыдущие значения перед обновлением (глубокая копия)
+            const currentPreviousValues = new Map();
+            previousOpportunities.forEach((value, key) => {
+                currentPreviousValues.set(key, { ...value });
+            });
             
             cachedOpportunities = data.opportunities;
             displayOpportunities(data.opportunities, currentPreviousValues);
@@ -343,11 +346,18 @@ async function loadArbitrageOpportunities(showLoading = true) {
             // Обновляем previousOpportunities для следующего сравнения
             data.opportunities.forEach(opp => {
                 const key = `${opp.symbol}_${opp.buyExchange}_${opp.sellExchange}`;
-                previousOpportunities.set(key, {
-                    profitPercent: parseFloat(opp.realProfitPercent) || parseFloat(opp.profitPercent) || 0,
-                    buyPrice: parseFloat(opp.buyPrice) || 0,
-                    sellPrice: parseFloat(opp.sellPrice) || 0
-                });
+                const realProfitPercent = parseFloat(opp.realProfitPercent) || parseFloat(opp.profitPercent) || 0;
+                const buyPrice = parseFloat(opp.buyPrice) || 0;
+                const sellPrice = parseFloat(opp.sellPrice) || 0;
+                
+                // Сохраняем только если значения валидны
+                if (!isNaN(realProfitPercent) && !isNaN(buyPrice) && !isNaN(sellPrice)) {
+                    previousOpportunities.set(key, {
+                        profitPercent: realProfitPercent,
+                        buyPrice: buyPrice,
+                        sellPrice: sellPrice
+                    });
+                }
             });
             
             if (opportunitiesCountEl) animateNumber(opportunitiesCountEl, data.opportunities.length);
@@ -575,9 +585,9 @@ function renderOpportunities(opportunities, previousValues = new Map()) {
             const previousBuyPrice = previousData.buyPrice || 0;
             const previousSellPrice = previousData.sellPrice || 0;
             
-            // Изменение прибыли
+            // Изменение прибыли - уменьшен порог для показа больше изменений
             const change = realProfitPercent - previousProfit;
-            if (Math.abs(change) > 0.001) { // Изменение больше 0.001%
+            if (Math.abs(change) > 0.0001) { // Изменение больше 0.0001% (было 0.001%)
                 profitChange = change;
                 if (change > 0) {
                     profitChangeClass = 'profit-increasing';
@@ -588,13 +598,16 @@ function renderOpportunities(opportunities, previousValues = new Map()) {
                 }
             }
             
-            // Изменение цен
+            // Изменение цен - уменьшен порог
             const buyPriceChange = buyPrice - previousBuyPrice;
             const sellPriceChange = sellPrice - previousSellPrice;
             
-            if (Math.abs(buyPriceChange) > 0.0001 || Math.abs(sellPriceChange) > 0.0001) {
+            if (Math.abs(buyPriceChange) > 0.00001 || Math.abs(sellPriceChange) > 0.00001) {
                 priceChangeIndicator = '<span class="price-update-indicator" title="Цены обновлены">🔄</span>';
             }
+        } else {
+            // Если нет предыдущих данных, все равно показываем индикатор обновления
+            priceChangeIndicator = '<span class="price-update-indicator" title="Новые данные">🆕</span>';
         }
         
         // Сохраняем текущие данные для следующего сравнения
@@ -629,9 +642,9 @@ function renderOpportunities(opportunities, previousValues = new Map()) {
                     </div>
                     <div class="profit-badges">
                         <span class="profit-badge ${profitClass} ${profitChangeClass} live-profit" title="${t['opportunity.realProfit'] || 'Реальная прибыль с учетом комиссий - обновляется в реальном времени'}">
-                            ${profitChangeIcon}
+                            ${profitChangeIcon || '⚡'}
                             <span class="profit-value-live">+${formatPercent(realProfitPercent)}%</span>
-                            ${profitChange !== null ? `<span class="profit-change ${profitChange > 0 ? 'increase' : 'decrease'}">${profitChange > 0 ? '+' : ''}${formatPercent(profitChange)}%</span>` : ''}
+                            ${profitChange !== null ? `<span class="profit-change ${profitChange > 0 ? 'increase' : 'decrease'}" title="${profitChange > 0 ? 'Прибыль выросла' : 'Прибыль упала'}">${profitChange > 0 ? '↑' : '↓'} ${profitChange > 0 ? '+' : ''}${formatPercent(Math.abs(profitChange))}%</span>` : '<span class="profit-change stable" title="Без изменений">→</span>'}
                             <span class="live-indicator" title="Обновляется в реальном времени">⚡</span>
                         </span>
                         ${theoreticalProfitPercent > realProfitPercent ? `
