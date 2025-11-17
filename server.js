@@ -415,7 +415,23 @@ const TRADING_PAIRS = [
   'WIF/USDT', 'WIF/BTC', 'WIF/USD',
   'POPCAT/USDT', 'POPCAT/BTC',
   'MYRO/USDT', 'MYRO/BTC',
-  'JUP/USDT', 'JUP/BTC', 'JUP/USD'
+  'JUP/USDT', 'JUP/BTC', 'JUP/USD',
+  // Дополнительные экзотические пары для поиска больших арбитражей
+  '1000PEPE/USDT', '1000FLOKI/USDT', '1000SHIB/USDT',
+  'BONK/USDT', 'WIF/USDT', 'MYRO/USDT', 'POPCAT/USDT',
+  'ORDI/USDT', 'SATS/USDT', '1000SATS/USDT',
+  // Новые токены 2024-2025
+  'NOT/USDT', 'BB/USDT', 'ZK/USDT', 'LISTA/USDT', 'TAO/USDT',
+  'STRK/USDT', 'MANTA/USDT', 'PIXEL/USDT', 'PORTAL/USDT',
+  // AI токены
+  'FET/USDT', 'AGIX/USDT', 'OCEAN/USDT', 'RNDR/USDT',
+  // Дополнительные мемкоины и новые токены
+  'BABYDOGE/USDT', 'ELON/USDT', 'FLOKI/USDT', 'PEPE/USDT',
+  'SHIB/USDT', 'DOGE/USDT',
+  // Дополнительные популярные токены
+  'WLD/USDT', 'PYTH/USDT', 'JTO/USDT', 'BLUR/USDT',
+  'SEI/USDT', 'TIA/USDT', 'SUI/USDT', 'INJ/USDT',
+  'ARB/USDT', 'OP/USDT', 'TON/USDT', 'XMR/USDT'
 ];
 
 // Удаление дубликатов из массива торговых пар для оптимизации
@@ -1131,67 +1147,60 @@ async function getAllPrices(symbol, useCache = true) {
   return prices;
 }
 
-// Оптимизированное вычисление арбитражных возможностей (быстрее на 30-40%)
+// Вычисление арбитражных возможностей - показываем ВСЕ возможности
 function calculateArbitrageOpportunities(prices, symbol) {
   const opportunities = [];
   const exchanges = Object.keys(prices);
   
   if (exchanges.length < 2) return opportunities;
 
-  // Оптимизация: предварительно фильтруем валидные цены
-  const validPrices = [];
   for (let i = 0; i < exchanges.length; i++) {
-    const price = parseFloat(prices[exchanges[i]]);
-    if (price && !isNaN(price) && price > 0) {
-      validPrices.push({ exchange: exchanges[i], price });
-    }
-  }
-  
-  if (validPrices.length < 2) return opportunities;
-
-  // Оптимизация: используем более эффективный алгоритм сравнения
-  for (let i = 0; i < validPrices.length; i++) {
-    for (let j = i + 1; j < validPrices.length; j++) {
-      const { exchange: exchange1, price: price1 } = validPrices[i];
-      const { exchange: exchange2, price: price2 } = validPrices[j];
+    for (let j = i + 1; j < exchanges.length; j++) {
+      const exchange1 = exchanges[i];
+      const exchange2 = exchanges[j];
+      const price1 = parseFloat(prices[exchange1]);
+      const price2 = parseFloat(prices[exchange2]);
       
-      // Быстрое определение min/max без Math.min/max
-      const buyPrice = price1 < price2 ? price1 : price2;
-      const sellPrice = price1 < price2 ? price2 : price1;
+      // Проверяем валидность цен
+      if (!price1 || !price2 || isNaN(price1) || isNaN(price2) || price1 <= 0 || price2 <= 0) continue;
+      
+      // Определяем где покупать (дешевле) и где продавать (дороже)
+      const buyPrice = Math.min(price1, price2);
+      const sellPrice = Math.max(price1, price2);
       const buyExchange = price1 < price2 ? exchange1 : exchange2;
       const sellExchange = price1 < price2 ? exchange2 : exchange1;
       
-      // Быстрый расчет процента прибыли
-      const priceDiff = sellPrice - buyPrice;
-      const theoreticalProfitPercent = (priceDiff / buyPrice) * 100;
+      // Рассчитываем теоретическую прибыль (без учета комиссий)
+      const theoreticalProfit = sellPrice - buyPrice;
+      const theoreticalProfitPercent = (theoreticalProfit / buyPrice) * 100;
       
-      // Быстрая проверка - если теоретическая прибыль слишком мала, пропускаем
-      if (theoreticalProfitPercent < 0.05) continue;
-      
-      // Получаем комиссии (кэшируем для производительности)
+      // Рассчитываем реальную прибыль с учетом комиссий бирж
       const buyFee = EXCHANGE_FEES[buyExchange]?.taker || 0.002;
       const sellFee = EXCHANGE_FEES[sellExchange]?.taker || 0.002;
       
-      // Оптимизированный расчет реальной прибыли
+      // Реальная цена покупки с комиссией
       const realBuyPrice = buyPrice * (1 + buyFee);
+      // Реальная цена продажи с комиссией
       const realSellPrice = sellPrice * (1 - sellFee);
+      
+      // Реальная прибыль
       const realProfit = realSellPrice - realBuyPrice;
       const realProfitPercent = (realProfit / realBuyPrice) * 100;
       
-      // Проверяем минимальный порог прибыли
-      if (realProfitPercent > 0.01 && realProfit > 0) {
+      // Показываем ВСЕ возможности с положительной прибылью (без минимального порога)
+      if (realProfitPercent > 0 && realProfit > 0) {
         opportunities.push({
           symbol,
           buyExchange,
           sellExchange,
-          buyPrice,
-          sellPrice,
-          theoreticalProfit: priceDiff,
-          theoreticalProfitPercent,
-          realBuyPrice,
-          realSellPrice,
-          realProfit,
-          realProfitPercent,
+          buyPrice: buyPrice,
+          sellPrice: sellPrice,
+          theoreticalProfit: theoreticalProfit,
+          theoreticalProfitPercent: theoreticalProfitPercent,
+          realBuyPrice: realBuyPrice,
+          realSellPrice: realSellPrice,
+          realProfit: realProfit,
+          realProfitPercent: realProfitPercent,
           buyFee: buyFee * 100,
           sellFee: sellFee * 100,
           profit: realProfit,
@@ -1202,12 +1211,7 @@ function calculateArbitrageOpportunities(prices, symbol) {
     }
   }
   
-  // Оптимизированная сортировка - только если есть результаты
-  if (opportunities.length > 0) {
-    opportunities.sort((a, b) => b.profitPercent - a.profitPercent);
-  }
-  
-  return opportunities;
+  return opportunities.sort((a, b) => b.profitPercent - a.profitPercent);
 }
 
 // Middleware для обработки ошибок валидации
@@ -1228,8 +1232,8 @@ app.get('/api/arbitrage',
   [
     query('limit')
       .optional()
-      .isInt({ min: 1, max: 1000 })
-      .withMessage('Лимит должен быть числом от 1 до 1000'),
+      .isInt({ min: 1, max: 10000 })
+      .withMessage('Лимит должен быть числом от 1 до 10000'),
     query('_t')
       .optional()
       .isNumeric()
@@ -1238,8 +1242,8 @@ app.get('/api/arbitrage',
   handleValidationErrors,
   async (req, res) => {
   try {
-    // Увеличен лимит по умолчанию для обработки больше пар
-    const limit = parseInt(req.query.limit) || 500;
+    // Максимальный лимит для обработки всех пар и поиска больше возможностей
+    const limit = parseInt(req.query.limit) || TRADING_PAIRS_UNIQUE.length; // Обрабатываем ВСЕ пары
     const cacheKey = `arbitrage_${limit}`;
     const cached = arbitrageCache.get(cacheKey);
     

@@ -322,8 +322,8 @@ async function loadArbitrageOpportunities(showLoading = true) {
         
         // Добавляем timestamp для предотвращения кэширования браузером
         const timestamp = Date.now();
-        // Увеличен лимит для получения больше данных быстрее
-        const response = await fetch(`${API_BASE}/arbitrage?limit=500&_t=${timestamp}`, {
+        // Максимальный лимит для получения всех возможностей
+        const response = await fetch(`${API_BASE}/arbitrage?limit=1000&_t=${timestamp}`, {
             cache: 'no-cache',
             headers: { 
                 'Cache-Control': 'no-cache, no-store, must-revalidate',
