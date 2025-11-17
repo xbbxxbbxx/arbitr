@@ -35,7 +35,11 @@ const translations = {
     'opportunity.sellPrice': 'Цена продажи:',
     'opportunity.theoreticalProfit': 'Теоретическая прибыль:',
     'opportunity.realProfit': 'Реальная прибыль:',
-    'opportunity.fees': 'Комиссии:'
+    'opportunity.fees': 'Комиссии:',
+    'button.refresh': 'Обновить',
+    'button.autoRefresh': 'Автообновление',
+    'button.stop': 'Остановить',
+    'button.notifications': 'Уведомления'
   },
   ua: {
     'app.title': 'Крипто Арбітраж',
@@ -50,7 +54,11 @@ const translations = {
     'opportunity.sellPrice': 'Ціна продажу:',
     'opportunity.theoreticalProfit': 'Теоретичний прибуток:',
     'opportunity.realProfit': 'Реальний прибуток:',
-    'opportunity.fees': 'Комісії:'
+    'opportunity.fees': 'Комісії:',
+    'button.refresh': 'Оновити',
+    'button.autoRefresh': 'Автооновлення',
+    'button.stop': 'Зупинити',
+    'button.notifications': 'Сповіщення'
   },
   en: {
     'app.title': 'Crypto Arbitrage',
@@ -65,38 +73,54 @@ const translations = {
     'opportunity.sellPrice': 'Sell Price:',
     'opportunity.theoreticalProfit': 'Theoretical Profit:',
     'opportunity.realProfit': 'Real Profit:',
-    'opportunity.fees': 'Fees:'
+    'opportunity.fees': 'Fees:',
+    'button.refresh': 'Refresh',
+    'button.autoRefresh': 'Auto Refresh',
+    'button.stop': 'Stop',
+    'button.notifications': 'Notifications'
   }
 };
 
-// Элементы DOM
-const refreshBtn = document.getElementById('refreshBtn');
-const autoRefreshBtn = document.getElementById('autoRefreshBtn');
-const notificationsBtn = document.getElementById('notificationsBtn');
-const closeNotifications = document.getElementById('closeNotifications');
-const notificationPanel = document.getElementById('notificationPanel');
-const profitFilters = document.querySelectorAll('.profit-filter-btn');
-const sortSelect = document.getElementById('sortSelect');
-const searchInput = document.getElementById('searchInput');
-const opportunitiesHigh = document.getElementById('opportunitiesHigh');
-const opportunitiesMedium = document.getElementById('opportunitiesMedium');
-const opportunitiesLow = document.getElementById('opportunitiesLow');
-const countHigh = document.getElementById('countHigh');
-const countMedium = document.getElementById('countMedium');
-const countLow = document.getElementById('countLow');
-const pricesTable = document.getElementById('pricesTable');
-const pricesCards = document.getElementById('pricesCards');
-const lastUpdateEl = document.getElementById('lastUpdate');
-const exchangesCountEl = document.getElementById('exchangesCount');
-const pairsCountEl = document.getElementById('pairsCount');
-const opportunitiesCountEl = document.getElementById('opportunitiesCount');
-const exchangesCountCard = document.getElementById('exchangesCountCard');
-const pairsCountCard = document.getElementById('pairsCountCard');
-const opportunitiesCountCard = document.getElementById('opportunitiesCountCard');
-const maxProfitEl = document.getElementById('maxProfit');
-const statusText = document.getElementById('statusText');
-const viewToggle = document.getElementById('viewToggle');
-const viewToggleCards = document.getElementById('viewToggleCards');
+// Элементы DOM (будут инициализированы после загрузки DOM)
+let refreshBtn, autoRefreshBtn, notificationsBtn, closeNotifications, notificationPanel;
+let profitFilters, sortSelect, searchInput;
+let opportunitiesHigh, opportunitiesMedium, opportunitiesLow;
+let countHigh, countMedium, countLow;
+let pricesTable, pricesCards, lastUpdateEl;
+let exchangesCountEl, pairsCountEl, opportunitiesCountEl;
+let exchangesCountCard, pairsCountCard, opportunitiesCountCard;
+let maxProfitEl, statusText, viewToggle, viewToggleCards;
+
+// Функция инициализации DOM элементов
+function initDOMElements() {
+    refreshBtn = document.getElementById('refreshBtn');
+    autoRefreshBtn = document.getElementById('autoRefreshBtn');
+    notificationsBtn = document.getElementById('notificationsBtn');
+    closeNotifications = document.getElementById('closeNotifications');
+    notificationPanel = document.getElementById('notificationPanel');
+    profitFilters = document.querySelectorAll('.profit-filter-btn');
+    sortSelect = document.getElementById('sortSelect');
+    searchInput = document.getElementById('searchInput');
+    opportunitiesHigh = document.getElementById('opportunitiesHigh');
+    opportunitiesMedium = document.getElementById('opportunitiesMedium');
+    opportunitiesLow = document.getElementById('opportunitiesLow');
+    countHigh = document.getElementById('countHigh');
+    countMedium = document.getElementById('countMedium');
+    countLow = document.getElementById('countLow');
+    pricesTable = document.getElementById('pricesTable');
+    pricesCards = document.getElementById('pricesCards');
+    lastUpdateEl = document.getElementById('lastUpdate');
+    exchangesCountEl = document.getElementById('exchangesCount');
+    pairsCountEl = document.getElementById('pairsCount');
+    opportunitiesCountEl = document.getElementById('opportunitiesCount');
+    exchangesCountCard = document.getElementById('exchangesCountCard');
+    pairsCountCard = document.getElementById('pairsCountCard');
+    opportunitiesCountCard = document.getElementById('opportunitiesCountCard');
+    maxProfitEl = document.getElementById('maxProfit');
+    statusText = document.getElementById('statusText');
+    viewToggle = document.getElementById('viewToggle');
+    viewToggleCards = document.getElementById('viewToggleCards');
+}
 
 // Определение устройства
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -190,24 +214,44 @@ function validateSymbol(symbol) {
     return /^[A-Z0-9]+\/[A-Z0-9]+$/i.test(symbol);
 }
 
-function animateNumber(element, targetValue) {
-    const current = parseInt(element.textContent) || 0;
-    if (isNaN(targetValue)) return;
-    const increment = targetValue > current ? 1 : -1;
-    const steps = Math.abs(targetValue - current);
-    if (steps === 0) return;
-    const stepDuration = 1000 / steps;
+// Улучшенная анимация числа с эффектами
+function animateNumber(element, targetValue, suffix = '') {
+    if (!element) return;
     
-    let currentValue = current;
-    const timer = setInterval(() => {
-        currentValue += increment;
-        element.textContent = currentValue;
+    const currentText = element.textContent.replace(/[^0-9.-]/g, '');
+    const startValue = parseFloat(currentText) || 0;
+    const duration = 1500;
+    const startTime = performance.now();
+    
+    // Добавляем класс анимации
+    element.classList.add('animating');
+    
+    function update(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
         
-        if (currentValue === targetValue) {
-            clearInterval(timer);
-            element.textContent = targetValue;
+        // Easing функция для плавной анимации
+        const easeOutCubic = 1 - Math.pow(1 - progress, 3);
+        const currentValue = startValue + (targetValue - startValue) * easeOutCubic;
+        
+        // Форматируем число
+        if (suffix === '%') {
+            element.textContent = currentValue.toFixed(2) + suffix;
+        } else {
+            element.textContent = Math.floor(currentValue) + suffix;
         }
-    }, stepDuration);
+        
+        if (progress < 1) {
+            requestAnimationFrame(update);
+        } else {
+            element.textContent = suffix === '%' ? targetValue.toFixed(2) + suffix : targetValue + suffix;
+            element.classList.remove('animating');
+            element.classList.add('pulse');
+            setTimeout(() => element.classList.remove('pulse'), 600);
+        }
+    }
+    
+    requestAnimationFrame(update);
 }
 
 // Категоризация по прибыли
@@ -237,14 +281,30 @@ async function loadStats() {
         
         if (exchangesData.success) {
             const count = exchangesData.total;
-            exchangesCountEl.textContent = count;
-            exchangesCountCard.textContent = count;
+            if (exchangesCountEl) animateNumber(exchangesCountEl, count);
+            if (exchangesCountCard) {
+                animateNumber(exchangesCountCard, count);
+                // Анимация иконки
+                const card = exchangesCountCard.closest('.stat-card');
+                if (card) {
+                    card.classList.add('stat-updated');
+                    setTimeout(() => card.classList.remove('stat-updated'), 1000);
+                }
+            }
         }
         
         if (pairsData.success) {
             const count = pairsData.total;
-            pairsCountEl.textContent = count;
-            pairsCountCard.textContent = count;
+            if (pairsCountEl) animateNumber(pairsCountEl, count);
+            if (pairsCountCard) {
+                animateNumber(pairsCountCard, count);
+                // Анимация иконки
+                const card = pairsCountCard.closest('.stat-card');
+                if (card) {
+                    card.classList.add('stat-updated');
+                    setTimeout(() => card.classList.remove('stat-updated'), 1000);
+                }
+            }
         }
     } catch (error) {
         console.error('Ошибка загрузки статистики:', error);
@@ -255,9 +315,9 @@ async function loadStats() {
 async function loadArbitrageOpportunities(showLoading = true) {
     try {
         if (showLoading) {
-            opportunitiesHigh.innerHTML = '<div class="loading">Загрузка...</div>';
-            opportunitiesMedium.innerHTML = '<div class="loading">Загрузка...</div>';
-            opportunitiesLow.innerHTML = '<div class="loading">Загрузка...</div>';
+            if (opportunitiesHigh) opportunitiesHigh.innerHTML = '<div class="loading">Загрузка...</div>';
+            if (opportunitiesMedium) opportunitiesMedium.innerHTML = '<div class="loading">Загрузка...</div>';
+            if (opportunitiesLow) opportunitiesLow.innerHTML = '<div class="loading">Загрузка...</div>';
         }
         
         // Добавляем timestamp для предотвращения кэширования браузером
@@ -273,15 +333,44 @@ async function loadArbitrageOpportunities(showLoading = true) {
         const data = await response.json();
         
         if (data.success) {
+            // Отслеживаем изменения прибыли
+            const currentOpportunities = new Map();
+            data.opportunities.forEach(opp => {
+                const key = `${opp.symbol}_${opp.buyExchange}_${opp.sellExchange}`;
+                const profit = parseFloat(opp.realProfitPercent) || parseFloat(opp.profitPercent) || 0;
+                currentOpportunities.set(key, profit);
+            });
+            
             cachedOpportunities = data.opportunities;
-            displayOpportunities(data.opportunities);
-            animateNumber(opportunitiesCountEl, data.opportunities.length);
-            animateNumber(opportunitiesCountCard, data.opportunities.length);
+            displayOpportunities(data.opportunities, previousOpportunities);
+            
+            // Сохраняем текущие значения для следующего сравнения
+            previousOpportunities = currentOpportunities;
+            
+            if (opportunitiesCountEl) animateNumber(opportunitiesCountEl, data.opportunities.length);
+            if (opportunitiesCountCard) {
+                animateNumber(opportunitiesCountCard, data.opportunities.length);
+                // Анимация иконки
+                const card = opportunitiesCountCard.closest('.stat-card');
+                if (card) {
+                    card.classList.add('stat-updated');
+                    setTimeout(() => card.classList.remove('stat-updated'), 1000);
+                }
+            }
             
             // Максимальная прибыль
-            if (data.opportunities.length > 0) {
-                const maxProfit = Math.max(...data.opportunities.map(o => parseFloat(o.profitPercent)));
-                maxProfitEl.textContent = `${maxProfit.toFixed(2)}%`;
+            if (data.opportunities.length > 0 && maxProfitEl) {
+                const maxProfit = Math.max(...data.opportunities.map(o => {
+                    const profit = parseFloat(o.realProfitPercent) || parseFloat(o.profitPercent) || 0;
+                    return profit;
+                }));
+                animateNumber(maxProfitEl, maxProfit, '%');
+                // Анимация иконки
+                const card = maxProfitEl.closest('.stat-card');
+                if (card) {
+                    card.classList.add('stat-updated');
+                    setTimeout(() => card.classList.remove('stat-updated'), 1000);
+                }
             }
             
             updateTimestamp();
@@ -290,15 +379,15 @@ async function loadArbitrageOpportunities(showLoading = true) {
     } catch (error) {
         console.error('Ошибка загрузки:', error);
         if (showLoading) {
-            opportunitiesHigh.innerHTML = '<div class="loading">Ошибка подключения</div>';
-            opportunitiesMedium.innerHTML = '<div class="loading">Ошибка подключения</div>';
-            opportunitiesLow.innerHTML = '<div class="loading">Ошибка подключения</div>';
+            if (opportunitiesHigh) opportunitiesHigh.innerHTML = '<div class="loading">Ошибка подключения</div>';
+            if (opportunitiesMedium) opportunitiesMedium.innerHTML = '<div class="loading">Ошибка подключения</div>';
+            if (opportunitiesLow) opportunitiesLow.innerHTML = '<div class="loading">Ошибка подключения</div>';
         }
     }
 }
 
-// Отображение возможностей с категоризацией
-function displayOpportunities(opportunities) {
+// Отображение возможностей с категоризацией и отслеживанием изменений
+function displayOpportunities(opportunities, previousValues = new Map()) {
     // Фильтрация по поиску
     let filtered = opportunities;
     const searchTerm = searchInput.value.toLowerCase();
@@ -375,13 +464,19 @@ function displayOpportunities(opportunities) {
         return profit >= 0.5 && profit < 1;
     });
     
-    countHigh.textContent = high.length;
-    countMedium.textContent = medium.length;
-    countLow.textContent = low.length;
+    if (countHigh) countHigh.textContent = high.length;
+    if (countMedium) countMedium.textContent = medium.length;
+    if (countLow) countLow.textContent = low.length;
     
-    opportunitiesHigh.innerHTML = high.length > 0 ? renderOpportunities(high) : '<div class="loading">Нет возможностей</div>';
-    opportunitiesMedium.innerHTML = medium.length > 0 ? renderOpportunities(medium) : '<div class="loading">Нет возможностей</div>';
-    opportunitiesLow.innerHTML = low.length > 0 ? renderOpportunities(low) : '<div class="loading">Нет возможностей</div>';
+    if (opportunitiesHigh) {
+        opportunitiesHigh.innerHTML = high.length > 0 ? renderOpportunities(high, previousValues) : '<div class="loading">Нет возможностей</div>';
+    }
+    if (opportunitiesMedium) {
+        opportunitiesMedium.innerHTML = medium.length > 0 ? renderOpportunities(medium, previousValues) : '<div class="loading">Нет возможностей</div>';
+    }
+    if (opportunitiesLow) {
+        opportunitiesLow.innerHTML = low.length > 0 ? renderOpportunities(low, previousValues) : '<div class="loading">Нет возможностей</div>';
+    }
 }
 
 // Умное форматирование чисел для цен
@@ -442,7 +537,7 @@ function formatPercent(percent) {
     return num.toFixed(2);
 }
 
-function renderOpportunities(opportunities) {
+function renderOpportunities(opportunities, previousValues = new Map()) {
     const t = translations[currentLanguage] || translations.ru;
     
     return opportunities.map(opp => {
@@ -461,15 +556,55 @@ function renderOpportunities(opportunities) {
             return ''; // Пропускаем некорректные данные
         }
         
+        // Определяем изменение прибыли
+        const key = `${opp.symbol}_${opp.buyExchange}_${opp.sellExchange}`;
+        const previousProfit = previousValues.get(key);
+        let profitChange = null;
+        let profitChangeClass = '';
+        let profitChangeIcon = '';
+        
+        if (previousProfit !== undefined && previousProfit !== null) {
+            const change = realProfitPercent - previousProfit;
+            if (Math.abs(change) > 0.01) { // Изменение больше 0.01%
+                profitChange = change;
+                if (change > 0) {
+                    profitChangeClass = 'profit-increasing';
+                    profitChangeIcon = '📈';
+                } else {
+                    profitChangeClass = 'profit-decreasing';
+                    profitChangeIcon = '📉';
+                }
+            }
+        }
+        
         const profitClass = getProfitBadgeClass(realProfitPercent);
         
+        // Индикатор выгодности
+        let profitabilityIndicator = '';
+        if (realProfitPercent >= 5) {
+            profitabilityIndicator = '<span class="profitability-indicator very-profitable" title="Очень выгодно - прибыль >5%">🔥 Очень выгодно</span>';
+        } else if (realProfitPercent >= 2) {
+            profitabilityIndicator = '<span class="profitability-indicator profitable" title="Выгодно - прибыль 2-5%">✅ Выгодно</span>';
+        } else if (realProfitPercent >= 1) {
+            profitabilityIndicator = '<span class="profitability-indicator moderate" title="Умеренно выгодно - прибыль 1-2%">⚡ Умеренно</span>';
+        } else if (realProfitPercent >= 0.5) {
+            profitabilityIndicator = '<span class="profitability-indicator low-profit" title="Низкая прибыль - 0.5-1%">⚠️ Низкая</span>';
+        } else {
+            profitabilityIndicator = '<span class="profitability-indicator not-profitable" title="Не выгодно - прибыль <0.5%">❌ Не выгодно</span>';
+        }
+        
         return `
-            <div class="opportunity-card">
+            <div class="opportunity-card ${profitChangeClass} profitability-${profitClass}" data-opportunity-key="${key}">
                 <div class="opportunity-header">
-                    <span class="opportunity-symbol">${escapeHtml(opp.symbol)}</span>
+                    <div class="opportunity-symbol-section">
+                        <span class="opportunity-symbol">${escapeHtml(opp.symbol)}</span>
+                        ${profitabilityIndicator}
+                    </div>
                     <div class="profit-badges">
-                        <span class="profit-badge ${profitClass}" title="${t['opportunity.realProfit'] || 'Реальная прибыль с учетом комиссий'}">
+                        <span class="profit-badge ${profitClass} ${profitChangeClass}" title="${t['opportunity.realProfit'] || 'Реальная прибыль с учетом комиссий'}">
+                            ${profitChangeIcon}
                             +${formatPercent(realProfitPercent)}%
+                            ${profitChange !== null ? `<span class="profit-change">${profitChange > 0 ? '+' : ''}${formatPercent(profitChange)}%</span>` : ''}
                         </span>
                         ${theoreticalProfitPercent > realProfitPercent ? `
                             <span class="profit-badge theoretical" title="${t['opportunity.theoreticalProfit'] || 'Теоретическая прибыль без комиссий'}">
@@ -520,7 +655,11 @@ function renderOpportunities(opportunities) {
 // Загрузка цен
 async function loadPrices(showLoading = true) {
     try {
+        if (!pricesTable) return; // Если таблица не найдена, выходим
+        
         const tbody = pricesTable.querySelector('tbody');
+        if (!tbody) return; // Если tbody не найден, выходим
+        
         if (showLoading && (!tbody.querySelector('tr') || tbody.querySelector('tr').textContent.includes('Загрузка'))) {
             tbody.innerHTML = '<tr><td colspan="15" class="loading">Загрузка данных...</td></tr>';
             if (pricesCards) pricesCards.innerHTML = '<div class="loading">Загрузка данных...</div>';
@@ -545,7 +684,11 @@ async function loadPrices(showLoading = true) {
 
 // Обновление таблицы цен
 function updatePricesTable(prices) {
+    if (!pricesTable) return; // Если таблица не найдена, выходим
+    
     const tbody = pricesTable.querySelector('tbody');
+    if (!tbody) return; // Если tbody не найден, выходим
+    
     const exchanges = ['binance', 'coinbase', 'kraken', 'kucoin', 'bybit', 'okx', 'gateio', 'huobi', 'bitfinex', 'bitstamp', 'gemini', 'bitget', 'mexc'];
     
     if (!tbody.querySelector('tr') || tbody.querySelector('tr').textContent.includes('Загрузка')) {
@@ -700,9 +843,16 @@ function updateTimestamp() {
         minute: '2-digit', 
         second: '2-digit' 
     });
-    lastUpdateEl.textContent = `Последнее обновление: ${timeString}`;
-    statusText.textContent = 'Система активна';
+    if (lastUpdateEl) {
+        lastUpdateEl.textContent = `Последнее обновление: ${timeString}`;
+    }
+    if (statusText) {
+        statusText.textContent = 'Система активна';
+    }
 }
+
+// Хранение предыдущих значений для отслеживания изменений
+let previousOpportunities = new Map();
 
 // Переключение автообновления
 function toggleAutoRefresh() {
@@ -710,90 +860,140 @@ function toggleAutoRefresh() {
         clearInterval(autoRefreshInterval);
         clearInterval(pricesUpdateInterval);
         isAutoRefresh = false;
-        document.getElementById('autoRefreshText').textContent = 'Автообновление';
-        autoRefreshBtn.classList.remove('active');
+        const autoRefreshTextEl = document.getElementById('autoRefreshText');
+        const t = translations[currentLanguage] || translations.ru;
+        if (autoRefreshTextEl) {
+            autoRefreshTextEl.textContent = t['button.autoRefresh'] || 'Автообновление';
+        }
+        if (autoRefreshBtn) {
+            autoRefreshBtn.classList.remove('active');
+        }
     } else {
-        // Обновление арбитражных возможностей каждые 2 секунды
+        // Обновление арбитражных возможностей каждую секунду (реальное время)
         autoRefreshInterval = setInterval(() => {
             loadArbitrageOpportunities(false);
-        }, 2000);
+        }, 1000);
         
-        // Обновление цен каждые 2 секунды (синхронно с арбитражем)
+        // Обновление цен каждую секунду (синхронно с арбитражем)
         pricesUpdateInterval = setInterval(() => {
             loadPrices(false);
-        }, 2000);
+        }, 1000);
         
         // Загружаем данные сразу при включении
         loadArbitrageOpportunities(false);
         loadPrices(false);
         
         isAutoRefresh = true;
-        document.getElementById('autoRefreshText').textContent = 'Остановить';
-        autoRefreshBtn.classList.add('active');
+        const autoRefreshTextEl = document.getElementById('autoRefreshText');
+        const t = translations[currentLanguage] || translations.ru;
+        if (autoRefreshTextEl) {
+            autoRefreshTextEl.textContent = t['button.stop'] || 'Остановить';
+        }
+        if (autoRefreshBtn) {
+            autoRefreshBtn.classList.add('active');
+        }
     }
 }
 
-// Обработчики событий
-refreshBtn.addEventListener('click', throttle(() => {
-    loadArbitrageOpportunities();
-    loadPrices();
-}, 2000));
-
-autoRefreshBtn.addEventListener('click', toggleAutoRefresh);
-
-notificationsBtn.addEventListener('click', () => {
-    notificationPanel.classList.toggle('open');
-    if (Notification.permission === 'default') {
-        Notification.requestPermission();
+// Функция инициализации всех обработчиков событий
+function initEventHandlers() {
+    // Обработчики кнопок
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', throttle(() => {
+            loadArbitrageOpportunities();
+            loadPrices();
+        }, 2000));
     }
-});
 
-closeNotifications.addEventListener('click', () => {
-    notificationPanel.classList.remove('open');
-});
+    if (autoRefreshBtn) {
+        autoRefreshBtn.addEventListener('click', toggleAutoRefresh);
+    }
 
-profitFilters.forEach(btn => {
-    btn.addEventListener('click', () => {
-        profitFilters.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        displayOpportunities(cachedOpportunities);
-    });
-});
+    if (notificationsBtn) {
+        notificationsBtn.addEventListener('click', () => {
+            if (notificationPanel) {
+                notificationPanel.classList.toggle('open');
+            }
+            if (Notification.permission === 'default') {
+                Notification.requestPermission();
+            }
+        });
+    }
 
-sortSelect.addEventListener('change', () => {
-    displayOpportunities(cachedOpportunities);
-});
+    if (closeNotifications) {
+        closeNotifications.addEventListener('click', () => {
+            if (notificationPanel) {
+                notificationPanel.classList.remove('open');
+            }
+        });
+    }
 
-searchInput.addEventListener('input', debounce(() => {
-    displayOpportunities(cachedOpportunities);
-}, 300));
+    // Обработчики фильтров
+    if (profitFilters && profitFilters.length > 0) {
+        profitFilters.forEach(btn => {
+            btn.addEventListener('click', () => {
+                profitFilters.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                displayOpportunities(cachedOpportunities);
+            });
+        });
+    }
 
-// Настройки уведомлений
-document.getElementById('notifyHigh').addEventListener('change', (e) => {
-    notificationSettings.high = e.target.checked;
-});
+    if (sortSelect) {
+        sortSelect.addEventListener('change', () => {
+            displayOpportunities(cachedOpportunities);
+        });
+    }
 
-document.getElementById('notifyMedium').addEventListener('change', (e) => {
-    notificationSettings.medium = e.target.checked;
-});
+    if (searchInput) {
+        searchInput.addEventListener('input', debounce(() => {
+            displayOpportunities(cachedOpportunities);
+        }, 300));
+    }
 
-document.getElementById('profitThreshold').addEventListener('input', (e) => {
-    notificationSettings.threshold = parseFloat(e.target.value);
-    document.getElementById('thresholdValue').textContent = `${e.target.value}%`;
-});
+    // Настройки уведомлений
+    const notifyHigh = document.getElementById('notifyHigh');
+    const notifyMedium = document.getElementById('notifyMedium');
+    const profitThreshold = document.getElementById('profitThreshold');
+    const thresholdValue = document.getElementById('thresholdValue');
+
+    if (notifyHigh) {
+        notifyHigh.addEventListener('change', (e) => {
+            notificationSettings.high = e.target.checked;
+        });
+    }
+
+    if (notifyMedium) {
+        notifyMedium.addEventListener('change', (e) => {
+            notificationSettings.medium = e.target.checked;
+        });
+    }
+
+    if (profitThreshold && thresholdValue) {
+        profitThreshold.addEventListener('input', (e) => {
+            notificationSettings.threshold = parseFloat(e.target.value);
+            thresholdValue.textContent = `${e.target.value}%`;
+        });
+    }
+}
 
 // Функции для темы
 function applyTheme(theme) {
+    if (!theme) return; // Защита от пустого значения
+    
     currentTheme = theme;
     localStorage.setItem('theme', theme);
     
     // Применяем тему с учетом цветовой схемы
     updateThemeAttribute();
     
+    // Обновляем иконку темы
     const themeIcon = document.querySelector('.theme-icon');
     if (themeIcon) {
         themeIcon.textContent = theme === 'dark' ? '🌙' : '☀️';
     }
+    
+    console.log('Тема применена:', theme, 'Цветовая схема:', currentColorScheme);
 }
 
 function toggleTheme() {
@@ -803,12 +1003,16 @@ function toggleTheme() {
 
 // Обновление атрибута темы с учетом цветовой схемы
 function updateThemeAttribute() {
+    // Удаляем все возможные атрибуты темы
+    document.documentElement.removeAttribute('data-theme');
+    document.documentElement.removeAttribute('data-color-scheme');
+    
+    // Применяем тему и цветовую схему
     if (currentColorScheme !== 'default') {
         document.documentElement.setAttribute('data-theme', `${currentTheme}-${currentColorScheme}`);
         document.documentElement.setAttribute('data-color-scheme', currentColorScheme);
     } else {
         document.documentElement.setAttribute('data-theme', currentTheme);
-        document.documentElement.removeAttribute('data-color-scheme');
     }
 }
 
@@ -828,6 +1032,11 @@ function applyColorScheme(scheme) {
 
 // Функции для языка
 function applyLanguage(lang) {
+    if (!lang || !translations[lang]) {
+        console.warn('Язык не найден:', lang);
+        lang = 'ru'; // Fallback на русский
+    }
+    
     currentLanguage = lang;
     localStorage.setItem('language', lang);
     
@@ -837,7 +1046,12 @@ function applyLanguage(lang) {
     document.querySelectorAll('[data-i18n]').forEach(el => {
         const key = el.getAttribute('data-i18n');
         if (t[key]) {
-            el.textContent = t[key];
+            // Для input элементов обновляем placeholder, для остальных - textContent
+            if (el.tagName === 'INPUT' && el.type !== 'button' && el.type !== 'number') {
+                el.placeholder = t[key];
+            } else if (el.tagName !== 'INPUT' || el.type === 'button') {
+                el.textContent = t[key];
+            }
         }
     });
     
@@ -847,10 +1061,22 @@ function applyLanguage(lang) {
         langSelect.value = lang;
     }
     
+    // Обновляем текст кнопки автообновления
+    const autoRefreshText = document.getElementById('autoRefreshText');
+    if (autoRefreshText) {
+        if (isAutoRefresh) {
+            autoRefreshText.textContent = t['button.stop'] || 'Остановить';
+        } else {
+            autoRefreshText.textContent = t['button.autoRefresh'] || 'Автообновление';
+        }
+    }
+    
     // Перерисовываем возможности с новым языком
     if (cachedOpportunities.length > 0) {
         displayOpportunities(cachedOpportunities);
     }
+    
+    console.log('Язык применен:', lang);
 }
 
 // Функция для применения кастомного диапазона прибыли
@@ -873,47 +1099,63 @@ function applyCustomProfitRange() {
     }
 }
 
-// Обработчики для новых элементов
-const themeToggle = document.getElementById('themeToggle');
-const colorSchemeSelect = document.getElementById('colorSchemeSelect');
-const languageSelect = document.getElementById('languageSelect');
-const applyRangeFilter = document.getElementById('applyRangeFilter');
-
-if (themeToggle) {
-    themeToggle.addEventListener('click', toggleTheme);
-}
-
-if (colorSchemeSelect) {
-    colorSchemeSelect.addEventListener('change', (e) => {
-        applyColorScheme(e.target.value);
-    });
-}
-
-if (languageSelect) {
-    languageSelect.addEventListener('change', (e) => {
-        applyLanguage(e.target.value);
-    });
-}
-
-if (applyRangeFilter) {
-    applyRangeFilter.addEventListener('click', applyCustomProfitRange);
-}
-
 // Инициализация
 document.addEventListener('DOMContentLoaded', () => {
-    // Применяем сохраненные настройки
-    applyTheme(currentTheme);
-    applyColorScheme(currentColorScheme);
-    applyLanguage(currentLanguage);
+    // Инициализируем все DOM элементы
+    initDOMElements();
+    
+    // Инициализируем все обработчики событий
+    initEventHandlers();
+    
+    // Обработчики для новых элементов (тема, язык, фильтры)
+    const themeToggle = document.getElementById('themeToggle');
+    const colorSchemeSelect = document.getElementById('colorSchemeSelect');
+    const languageSelect = document.getElementById('languageSelect');
+    const applyRangeFilter = document.getElementById('applyRangeFilter');
+
+    if (themeToggle) {
+        themeToggle.addEventListener('click', toggleTheme);
+    }
+
+    if (colorSchemeSelect) {
+        colorSchemeSelect.value = currentColorScheme; // Устанавливаем текущее значение
+        colorSchemeSelect.addEventListener('change', (e) => {
+            applyColorScheme(e.target.value);
+        });
+    }
+
+    if (languageSelect) {
+        languageSelect.value = currentLanguage; // Устанавливаем текущее значение
+        languageSelect.addEventListener('change', (e) => {
+            applyLanguage(e.target.value);
+        });
+    }
+
+    if (applyRangeFilter) {
+        applyRangeFilter.addEventListener('click', applyCustomProfitRange);
+    }
+    
+    // Применяем сохраненные настройки (ВАЖНО: сначала тема, потом язык)
+    // Тема должна применяться первой, чтобы CSS переменные были установлены
+    updateThemeAttribute(); // Применяем тему сразу
+    applyColorScheme(currentColorScheme); // Затем цветовую схему
+    applyLanguage(currentLanguage); // Затем язык
+    
+    // Убеждаемся, что иконка темы правильная
+    const themeIcon = document.querySelector('.theme-icon');
+    if (themeIcon) {
+        themeIcon.textContent = currentTheme === 'dark' ? '🌙' : '☀️';
+    }
     
     initView(); // Инициализируем вид
     loadStats();
     loadArbitrageOpportunities();
     loadPrices();
     
-    setTimeout(() => {
-        toggleAutoRefresh();
-    }, 2000);
+    // Автообновление отключено по умолчанию - пользователь может включить вручную
+    // setTimeout(() => {
+    //     toggleAutoRefresh();
+    // }, 2000);
     
     if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission();

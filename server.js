@@ -356,18 +356,64 @@ function normalizeSymbol(symbol, exchange) {
 async function getBinancePrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'binance');
-    if (!normalized) return null;
+    if (!normalized) {
+      console.log(`Binance: Invalid symbol normalization for ${symbol}`);
+      return null;
+    }
     
-    const response = await axiosInstance.get(`${EXCHANGES.binance.tickerUrl}?symbol=${normalized}`, {
-      timeout: 5000
+    // Используем более надежный endpoint с лучшей обработкой ошибок
+    const url = `${EXCHANGES.binance.tickerUrl}?symbol=${normalized}`;
+    const response = await axiosInstance.get(url, {
+      timeout: 8000,
+      headers: {
+        'Accept': 'application/json',
+        'X-MBX-APIKEY': '' // Пустой ключ для публичного API
+      }
     });
     
+    // Binance возвращает объект с полем price
     if (response.data && response.data.price) {
-      return parseFloat(response.data.price);
+      const price = parseFloat(response.data.price);
+      if (!isNaN(price) && price > 0) {
+        return price;
+      }
     }
+    
+    // Альтернативный формат (массив) - для batch запросов
+    if (Array.isArray(response.data) && response.data.length > 0) {
+      const ticker = response.data.find(t => t.symbol === normalized);
+      if (ticker && ticker.price) {
+        const price = parseFloat(ticker.price);
+        if (!isNaN(price) && price > 0) {
+          return price;
+        }
+      }
+    }
+    
     return null;
   } catch (error) {
-    // Тихая обработка ошибок - не логируем, чтобы не засорять консоль
+    // Улучшенная обработка ошибок
+    if (error.response) {
+      const status = error.response.status;
+      if (status === 400) {
+        // Неверный символ - не логируем
+        return null;
+      }
+      if (status === 429) {
+        // Rate limit - логируем
+        console.warn(`Binance rate limit for ${symbol}`);
+        return null;
+      }
+      if (status >= 500) {
+        console.error(`Binance server error for ${symbol}:`, status);
+        return null;
+      }
+    } else if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+      console.warn(`Binance timeout for ${symbol}`);
+      return null;
+    } else {
+      console.error(`Binance API error for ${symbol}:`, error.message);
+    }
     return null;
   }
 }
@@ -435,28 +481,81 @@ async function getKuCoinPrice(symbol) {
 async function getBybitPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'bybit');
-    if (!normalized) return null;
+    if (!normalized) {
+      console.log(`Bybit: Invalid symbol normalization for ${symbol}`);
+      return null;
+    }
     
-    const response = await axiosInstance.get(`${EXCHANGES.bybit.tickerUrl}?category=spot&symbol=${normalized}`, {
-      timeout: 5000
+    // Используем API v5 с правильными параметрами
+    const url = `${EXCHANGES.bybit.tickerUrl}`;
+    const response = await axiosInstance.get(url, {
+      params: {
+        category: 'spot',
+        symbol: normalized
+      },
+      timeout: 8000,
+      headers: {
+        'Accept': 'application/json'
+      }
     });
     
     // Проверяем новый формат API v5
-    if (response.data && response.data.result && response.data.result.list && Array.isArray(response.data.result.list) && response.data.result.list.length > 0) {
-      const price = response.data.result.list[0].lastPrice;
-      if (price) {
-        return parseFloat(price);
+    if (response.data) {
+      // Проверяем наличие ошибки
+      if (response.data.retCode !== 0 && response.data.retCode !== undefined) {
+        // retCode 0 = успех, другие коды = ошибки
+        if (response.data.retCode !== 10001) { // 10001 = символ не найден
+          console.warn(`Bybit API retCode ${response.data.retCode} for ${symbol}:`, response.data.retMsg);
+        }
+        return null;
+      }
+      
+      if (response.data.result) {
+        // Формат v5 с list (когда запрашиваем один символ)
+        if (response.data.result.list && Array.isArray(response.data.result.list) && response.data.result.list.length > 0) {
+          const ticker = response.data.result.list[0];
+          const price = ticker.lastPrice || ticker.last_price;
+          if (price) {
+            const parsedPrice = parseFloat(price);
+            if (!isNaN(parsedPrice) && parsedPrice > 0) {
+              return parsedPrice;
+            }
+          }
+        }
+        // Прямой формат v5 (без list) - когда возвращается один объект
+        if (response.data.result.lastPrice) {
+          const parsedPrice = parseFloat(response.data.result.lastPrice);
+          if (!isNaN(parsedPrice) && parsedPrice > 0) {
+            return parsedPrice;
+          }
+        }
       }
     }
-    // Fallback на старый формат v2
-    if (response.data && response.data.result && Array.isArray(response.data.result) && response.data.result.length > 0) {
-      const price = response.data.result[0].last_price;
-      if (price) {
-        return parseFloat(price);
-      }
-    }
+    
     return null;
   } catch (error) {
+    // Улучшенная обработка ошибок
+    if (error.response) {
+      const status = error.response.status;
+      if (status === 400 || status === 404) {
+        // Неверный символ - не логируем
+        return null;
+      }
+      if (status === 429) {
+        // Rate limit
+        console.warn(`Bybit rate limit for ${symbol}`);
+        return null;
+      }
+      if (status >= 500) {
+        console.error(`Bybit server error for ${symbol}:`, status);
+        return null;
+      }
+    } else if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+      console.warn(`Bybit timeout for ${symbol}`);
+      return null;
+    } else {
+      console.error(`Bybit API error for ${symbol}:`, error.message);
+    }
     return null;
   }
 }
