@@ -997,6 +997,24 @@ body {
     }
 }
 
+.price-updated {
+    animation: priceUpdate 0.5s ease-out;
+}
+
+@keyframes priceUpdate {
+    0% {
+        background-color: transparent;
+    }
+    50% {
+        background-color: rgba(99, 102, 241, 0.2);
+        transform: scale(1.02);
+    }
+    100% {
+        background-color: transparent;
+        transform: scale(1);
+    }
+}
+
 .profit-badge.profit-increasing {
     background: linear-gradient(135deg, #10b981 0%, #059669 100%);
     box-shadow: 0 4px 15px rgba(16, 185, 129, 0.5);

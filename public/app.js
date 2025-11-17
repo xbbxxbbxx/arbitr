@@ -334,16 +334,19 @@ async function loadArbitrageOpportunities(showLoading = true) {
         const data = await response.json();
         
         if (data.success) {
-            // Сохраняем предыдущие значения перед обновлением (глубокая копия)
+            // Сохраняем предыдущие значения перед обновлением (глубокая копия для правильного сравнения)
             const currentPreviousValues = new Map();
             previousOpportunities.forEach((value, key) => {
-                currentPreviousValues.set(key, { ...value });
+                currentPreviousValues.set(key, {
+                    profitPercent: value.profitPercent || 0,
+                    buyPrice: value.buyPrice || 0,
+                    sellPrice: value.sellPrice || 0
+                });
             });
             
             cachedOpportunities = data.opportunities;
-            displayOpportunities(data.opportunities, currentPreviousValues);
             
-            // Обновляем previousOpportunities для следующего сравнения
+            // Обновляем previousOpportunities ПЕРЕД отображением, чтобы следующее обновление могло сравнить
             data.opportunities.forEach(opp => {
                 const key = `${opp.symbol}_${opp.buyExchange}_${opp.sellExchange}`;
                 const realProfitPercent = parseFloat(opp.realProfitPercent) || parseFloat(opp.profitPercent) || 0;
@@ -351,7 +354,7 @@ async function loadArbitrageOpportunities(showLoading = true) {
                 const sellPrice = parseFloat(opp.sellPrice) || 0;
                 
                 // Сохраняем только если значения валидны
-                if (!isNaN(realProfitPercent) && !isNaN(buyPrice) && !isNaN(sellPrice)) {
+                if (!isNaN(realProfitPercent) && !isNaN(buyPrice) && !isNaN(sellPrice) && realProfitPercent >= 0) {
                     previousOpportunities.set(key, {
                         profitPercent: realProfitPercent,
                         buyPrice: buyPrice,
@@ -359,6 +362,9 @@ async function loadArbitrageOpportunities(showLoading = true) {
                     });
                 }
             });
+            
+            // Отображаем с предыдущими значениями для сравнения
+            displayOpportunities(data.opportunities, currentPreviousValues);
             
             if (opportunitiesCountEl) animateNumber(opportunitiesCountEl, data.opportunities.length);
             if (opportunitiesCountCard) {
@@ -492,7 +498,188 @@ function displayOpportunities(opportunities, previousValues = new Map()) {
         if (opportunitiesLow) {
             opportunitiesLow.innerHTML = low.length > 0 ? renderOpportunities(low, previousValues) : '<div class="loading">Нет возможностей</div>';
         }
+        
+        // Запускаем обновление в реальном времени для всех отображаемых возможностей
+        startLiveUpdates([...high, ...medium, ...low]);
     });
+}
+
+// Запуск обновления цен в реальном времени для каждой возможности
+function startLiveUpdates(opportunities) {
+    // Останавливаем старые обновления для возможностей, которых больше нет на экране
+    const currentKeys = new Set(opportunities.map(opp => 
+        `${opp.symbol}_${opp.buyExchange}_${opp.sellExchange}`
+    ));
+    
+    // Удаляем интервалы для возможностей, которых больше нет
+    liveUpdateIntervals.forEach((interval, key) => {
+        if (!currentKeys.has(key)) {
+            clearInterval(interval);
+            liveUpdateIntervals.delete(key);
+            activeOpportunities.delete(key);
+        }
+    });
+    
+    // Запускаем обновления для новых возможностей
+    opportunities.forEach(opp => {
+        const key = `${opp.symbol}_${opp.buyExchange}_${opp.sellExchange}`;
+        
+        if (!activeOpportunities.has(key)) {
+            activeOpportunities.add(key);
+            
+            // Обновляем каждые 3 секунды для каждой возможности
+            const interval = setInterval(() => {
+                updateOpportunityPrice(opp.symbol, opp.buyExchange, opp.sellExchange, key);
+            }, 3000);
+            
+            liveUpdateIntervals.set(key, interval);
+            
+            // Первое обновление сразу
+            updateOpportunityPrice(opp.symbol, opp.buyExchange, opp.sellExchange, key);
+        }
+    });
+}
+
+// Обновление цены для конкретной возможности
+async function updateOpportunityPrice(symbol, buyExchange, sellExchange, key) {
+    try {
+        const response = await fetch(`${API_BASE}/prices/${symbol.replace('/', '-')}?_t=${Date.now()}`, {
+            cache: 'no-cache',
+            headers: { 'Cache-Control': 'no-cache' }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && data.prices) {
+            const buyPrice = parseFloat(data.prices[buyExchange]);
+            const sellPrice = parseFloat(data.prices[sellExchange]);
+            
+            if (buyPrice && sellPrice && buyPrice > 0 && sellPrice > 0) {
+                // Получаем комиссии из кэшированных данных возможности
+                const cachedOpp = cachedOpportunities.find(opp => 
+                    opp.symbol === symbol && 
+                    opp.buyExchange === buyExchange && 
+                    opp.sellExchange === sellExchange
+                );
+                
+                // Используем комиссии из данных или дефолтные
+                const buyFee = cachedOpp ? (parseFloat(cachedOpp.buyFee) / 100 || 0.002) : 0.002;
+                const sellFee = cachedOpp ? (parseFloat(cachedOpp.sellFee) / 100 || 0.002) : 0.002;
+                
+                // Рассчитываем реальную прибыль
+                const realBuyPrice = buyPrice * (1 + buyFee);
+                const realSellPrice = sellPrice * (1 - sellFee);
+                const realProfit = realSellPrice - realBuyPrice;
+                const realProfitPercent = (realProfit / realBuyPrice) * 100;
+                
+                // Получаем предыдущие значения
+                const previousData = previousOpportunities.get(key);
+                const previousProfit = previousData ? (previousData.profitPercent || 0) : 0;
+                
+                // Обновляем DOM элемент напрямую
+                const card = document.querySelector(`[data-opportunity-key="${key}"]`);
+                if (card) {
+                    // Обновляем процент прибыли
+                    const profitValueEl = card.querySelector('.profit-value-live');
+                    if (profitValueEl) {
+                        const oldValue = parseFloat(profitValueEl.textContent.replace(/[^0-9.-]/g, ''));
+                        const newValue = realProfitPercent;
+                        
+                        // Анимация изменения
+                        if (oldValue !== newValue) {
+                            profitValueEl.textContent = `+${formatPercent(newValue)}%`;
+                            
+                            // Добавляем класс для анимации
+                            if (newValue > oldValue) {
+                                profitValueEl.classList.add('profit-updating-up');
+                                setTimeout(() => profitValueEl.classList.remove('profit-updating-up'), 1000);
+                            } else if (newValue < oldValue) {
+                                profitValueEl.classList.add('profit-updating-down');
+                                setTimeout(() => profitValueEl.classList.remove('profit-updating-down'), 1000);
+                            }
+                        }
+                    }
+                    
+                    // Обновляем изменение прибыли
+                    const profitChangeEl = card.querySelector('.profit-change');
+                    const change = realProfitPercent - previousProfit;
+                    
+                    if (Math.abs(change) > 0.001) {
+                        if (profitChangeEl) {
+                            profitChangeEl.textContent = `${change > 0 ? '↑' : '↓'} ${change > 0 ? '+' : ''}${formatPercent(Math.abs(change))}%`;
+                            profitChangeEl.className = `profit-change ${change > 0 ? 'increase' : 'decrease'}`;
+                            profitChangeEl.style.display = 'inline-block';
+                        } else {
+                            // Создаем элемент изменения, если его нет
+                            const profitBadge = card.querySelector('.live-profit');
+                            if (profitBadge) {
+                                const changeSpan = document.createElement('span');
+                                changeSpan.className = `profit-change ${change > 0 ? 'increase' : 'decrease'}`;
+                                changeSpan.textContent = `${change > 0 ? '↑' : '↓'} ${change > 0 ? '+' : ''}${formatPercent(Math.abs(change))}%`;
+                                changeSpan.title = change > 0 ? `Прибыль выросла на ${formatPercent(Math.abs(change))}%` : `Прибыль упала на ${formatPercent(Math.abs(change))}%`;
+                                profitBadge.appendChild(changeSpan);
+                            }
+                        }
+                        
+                        // Обновляем иконку
+                        const profitBadge = card.querySelector('.live-profit');
+                        if (profitBadge) {
+                            const iconEl = profitBadge.querySelector('span:first-child');
+                            if (iconEl && !iconEl.classList.contains('profit-value-live')) {
+                                iconEl.textContent = change > 0 ? '📈' : '📉';
+                            }
+                        }
+                    } else if (profitChangeEl) {
+                        profitChangeEl.style.display = 'none';
+                    }
+                    
+                    // Обновляем цены покупки и продажи
+                    const priceDetails = card.querySelectorAll('.price-detail .detail-value');
+                    if (priceDetails.length >= 2) {
+                        // Цена покупки
+                        const buyPriceText = priceDetails[0].textContent.replace(/[^0-9.-]/g, '');
+                        const oldBuyPrice = parseFloat(buyPriceText);
+                        if (isNaN(oldBuyPrice) || Math.abs(oldBuyPrice - buyPrice) > 0.0001) {
+                            priceDetails[0].innerHTML = `$${formatPrice(buyPrice)} <span class="price-update-indicator" title="Цена обновлена">🔄</span>`;
+                            priceDetails[0].classList.add('price-updated');
+                            setTimeout(() => priceDetails[0].classList.remove('price-updated'), 1000);
+                        }
+                        
+                        // Цена продажи
+                        const sellPriceText = priceDetails[1].textContent.replace(/[^0-9.-]/g, '');
+                        const oldSellPrice = parseFloat(sellPriceText);
+                        if (isNaN(oldSellPrice) || Math.abs(oldSellPrice - sellPrice) > 0.0001) {
+                            priceDetails[1].innerHTML = `$${formatPrice(sellPrice)} <span class="price-update-indicator" title="Цена обновлена">🔄</span>`;
+                            priceDetails[1].classList.add('price-updated');
+                            setTimeout(() => priceDetails[1].classList.remove('price-updated'), 1000);
+                        }
+                    }
+                    
+                    // Обновляем реальную прибыль
+                    const realProfitEl = card.querySelector('.profit-value');
+                    if (realProfitEl) {
+                        realProfitEl.textContent = `$${formatProfit(realProfit)} (+${formatPercent(realProfitPercent)}%)`;
+                    }
+                }
+                
+                // Сохраняем новые значения для следующего сравнения
+                previousOpportunities.set(key, {
+                    profitPercent: realProfitPercent,
+                    buyPrice: buyPrice,
+                    sellPrice: sellPrice
+                });
+            }
+        }
+    } catch (error) {
+        console.warn(`Ошибка обновления цены для ${symbol}:`, error);
+    }
+}
+
+// Остановка всех обновлений в реальном времени
+function stopLiveUpdates() {
+    liveUpdateIntervals.forEach(interval => clearInterval(interval));
+    liveUpdateIntervals.clear();
+    activeOpportunities.clear();
 }
 
 // Умное форматирование чисел для цен
@@ -585,9 +772,10 @@ function renderOpportunities(opportunities, previousValues = new Map()) {
             const previousBuyPrice = previousData.buyPrice || 0;
             const previousSellPrice = previousData.sellPrice || 0;
             
-            // Изменение прибыли - уменьшен порог для показа больше изменений
+            // Изменение прибыли - показываем изменения если они есть
             const change = realProfitPercent - previousProfit;
-            if (Math.abs(change) > 0.0001) { // Изменение больше 0.0001% (было 0.001%)
+            // Уменьшен порог для показа изменений (0.01% для лучшей видимости)
+            if (Math.abs(change) > 0.01) {
                 profitChange = change;
                 if (change > 0) {
                     profitChangeClass = 'profit-increasing';
@@ -595,6 +783,14 @@ function renderOpportunities(opportunities, previousValues = new Map()) {
                 } else {
                     profitChangeClass = 'profit-decreasing';
                     profitChangeIcon = '📉';
+                }
+            } else if (Math.abs(change) > 0.001) {
+                // Показываем даже маленькие изменения, но без иконки
+                profitChange = change;
+                if (change > 0) {
+                    profitChangeClass = 'profit-increasing';
+                } else {
+                    profitChangeClass = 'profit-decreasing';
                 }
             }
             
@@ -642,9 +838,9 @@ function renderOpportunities(opportunities, previousValues = new Map()) {
                     </div>
                     <div class="profit-badges">
                         <span class="profit-badge ${profitClass} ${profitChangeClass} live-profit" title="${t['opportunity.realProfit'] || 'Реальная прибыль с учетом комиссий - обновляется в реальном времени'}">
-                            ${profitChangeIcon || '⚡'}
+                            ${profitChangeIcon || (profitChange !== null ? (profitChange > 0 ? '📈' : '📉') : '⚡')}
                             <span class="profit-value-live">+${formatPercent(realProfitPercent)}%</span>
-                            ${profitChange !== null ? `<span class="profit-change ${profitChange > 0 ? 'increase' : 'decrease'}" title="${profitChange > 0 ? 'Прибыль выросла' : 'Прибыль упала'}">${profitChange > 0 ? '↑' : '↓'} ${profitChange > 0 ? '+' : ''}${formatPercent(Math.abs(profitChange))}%</span>` : '<span class="profit-change stable" title="Без изменений">→</span>'}
+                            ${profitChange !== null && Math.abs(profitChange) > 0.001 ? `<span class="profit-change ${profitChange > 0 ? 'increase' : 'decrease'}" title="${profitChange > 0 ? 'Прибыль выросла на ' + formatPercent(Math.abs(profitChange)) + '%' : 'Прибыль упала на ' + formatPercent(Math.abs(profitChange)) + '%'}">${profitChange > 0 ? '↑' : '↓'} ${profitChange > 0 ? '+' : ''}${formatPercent(Math.abs(profitChange))}%</span>` : ''}
                             <span class="live-indicator" title="Обновляется в реальном времени">⚡</span>
                         </span>
                         ${theoreticalProfitPercent > realProfitPercent ? `
@@ -898,11 +1094,16 @@ function updateTimestamp() {
 // Хранение предыдущих значений для отслеживания изменений
 let previousOpportunities = new Map();
 
+// Система обновления цен в реальном времени для каждой возможности
+let liveUpdateIntervals = new Map(); // Хранит интервалы для каждой возможности
+let activeOpportunities = new Set(); // Активные возможности на экране
+
 // Переключение автообновления
 function toggleAutoRefresh() {
     if (isAutoRefresh) {
         clearInterval(autoRefreshInterval);
         clearInterval(pricesUpdateInterval);
+        stopLiveUpdates(); // Останавливаем обновления в реальном времени
         isAutoRefresh = false;
         const autoRefreshTextEl = document.getElementById('autoRefreshText');
         const t = translations[currentLanguage] || translations.ru;
@@ -913,16 +1114,16 @@ function toggleAutoRefresh() {
             autoRefreshBtn.classList.remove('active');
         }
     } else {
-        // Максимальная скорость обновления: арбитраж каждые 2 секунды, цены каждые 3 секунды
-        // Оптимизировано для максимально быстрого отображения данных
+        // Комфортная скорость обновления: арбитраж каждые 7 секунд, цены каждые 10 секунд
+        // Увеличено для комфортного просмотра сделок
         autoRefreshInterval = setInterval(() => {
             loadArbitrageOpportunities(false);
-        }, 2000);
+        }, 7000);
         
-        // Обновление цен с минимальной задержкой
+        // Обновление цен с комфортной задержкой
         pricesUpdateInterval = setInterval(() => {
             loadPrices(false);
-        }, 3000);
+        }, 10000);
         
         // Загружаем данные сразу при включении
         loadArbitrageOpportunities(false);
