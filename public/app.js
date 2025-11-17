@@ -145,8 +145,8 @@ function initView() {
     }
 }
 
-// Вызываем при загрузке и изменении размера окна
-window.addEventListener('resize', debounce(initView, 250));
+// Вызываем при загрузке и изменении размера окна (быстрый отклик)
+window.addEventListener('resize', debounce(initView, 150));
 
 // Переключение вида
 if (viewToggle && viewToggleCards) {
@@ -322,7 +322,7 @@ async function loadArbitrageOpportunities(showLoading = true) {
         
         // Добавляем timestamp для предотвращения кэширования браузером
         const timestamp = Date.now();
-        // Увеличен лимит для получения больше возможностей
+        // Увеличен лимит для получения больше данных быстрее
         const response = await fetch(`${API_BASE}/arbitrage?limit=500&_t=${timestamp}`, {
             cache: 'no-cache',
             headers: { 
@@ -471,15 +471,18 @@ function displayOpportunities(opportunities, previousValues = new Map()) {
     if (countMedium) countMedium.textContent = medium.length;
     if (countLow) countLow.textContent = low.length;
     
-    if (opportunitiesHigh) {
-        opportunitiesHigh.innerHTML = high.length > 0 ? renderOpportunities(high, previousValues) : '<div class="loading">Нет возможностей</div>';
-    }
-    if (opportunitiesMedium) {
-        opportunitiesMedium.innerHTML = medium.length > 0 ? renderOpportunities(medium, previousValues) : '<div class="loading">Нет возможностей</div>';
-    }
-    if (opportunitiesLow) {
-        opportunitiesLow.innerHTML = low.length > 0 ? renderOpportunities(low, previousValues) : '<div class="loading">Нет возможностей</div>';
-    }
+    // Оптимизированный рендеринг с использованием requestAnimationFrame для плавности
+    requestAnimationFrame(() => {
+        if (opportunitiesHigh) {
+            opportunitiesHigh.innerHTML = high.length > 0 ? renderOpportunities(high, previousValues) : '<div class="loading">Нет возможностей</div>';
+        }
+        if (opportunitiesMedium) {
+            opportunitiesMedium.innerHTML = medium.length > 0 ? renderOpportunities(medium, previousValues) : '<div class="loading">Нет возможностей</div>';
+        }
+        if (opportunitiesLow) {
+            opportunitiesLow.innerHTML = low.length > 0 ? renderOpportunities(low, previousValues) : '<div class="loading">Нет возможностей</div>';
+        }
+    });
 }
 
 // Умное форматирование чисел для цен
@@ -690,7 +693,7 @@ async function loadPrices(showLoading = true) {
             if (pricesCards) pricesCards.innerHTML = '<div class="loading">Загрузка данных...</div>';
         }
         
-        // Увеличен лимит для получения больше цен
+        // Увеличен лимит для получения больше цен быстрее
         const response = await fetch(`${API_BASE}/prices?limit=200`, {
             cache: 'no-cache',
             headers: { 'Cache-Control': 'no-cache' }
@@ -897,15 +900,16 @@ function toggleAutoRefresh() {
             autoRefreshBtn.classList.remove('active');
         }
     } else {
-        // Обновление арбитражных возможностей каждые 2 секунды (реальное время)
+        // Максимальная скорость обновления: арбитраж каждые 2 секунды, цены каждые 3 секунды
+        // Оптимизировано для максимально быстрого отображения данных
         autoRefreshInterval = setInterval(() => {
             loadArbitrageOpportunities(false);
         }, 2000);
         
-        // Обновление цен каждые 2 секунды (синхронно с арбитражем)
+        // Обновление цен с минимальной задержкой
         pricesUpdateInterval = setInterval(() => {
             loadPrices(false);
-        }, 2000);
+        }, 3000);
         
         // Загружаем данные сразу при включении
         loadArbitrageOpportunities(false);
@@ -974,9 +978,10 @@ function initEventHandlers() {
     }
 
     if (searchInput) {
+        // Оптимизированный debounce для поиска (быстрый отклик)
         searchInput.addEventListener('input', debounce(() => {
             displayOpportunities(cachedOpportunities);
-        }, 300));
+        }, 200));
     }
 
     // Настройки уведомлений

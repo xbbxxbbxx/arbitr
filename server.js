@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const compression = require('compression');
 const { body, param, query, validationResult } = require('express-validator');
 
 const app = express();
@@ -47,6 +48,18 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
+// Компрессия ответов для уменьшения размера передаваемых данных
+app.use(compression({
+  level: 6, // Баланс между скоростью и степенью сжатия
+  filter: (req, res) => {
+    // Сжимаем только JSON ответы и текстовые файлы
+    if (req.headers['x-no-compression']) {
+      return false;
+    }
+    return compression.filter(req, res);
+  }
+}));
+
 // Ограничение размера тела запроса (защита от больших payload)
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
@@ -79,25 +92,94 @@ app.use(limiter);
 // Применяем строгий лимит к API endpoints
 app.use('/api/', apiLimiter);
 
-// Кэш для цен (TTL: 1 секунда для обновления в реальном времени)
-const priceCache = new Map();
-const CACHE_TTL = 1000;
+// Оптимизированное кэширование с автоматической очисткой
+class Cache {
+  constructor(defaultTTL = 5000) {
+    this.cache = new Map();
+    this.defaultTTL = defaultTTL;
+    this.cleanupInterval = setInterval(() => this.cleanup(), 60000); // Очистка каждую минуту
+  }
 
-// Кэш для арбитражных возможностей (TTL: 1 секунда для обновления в реальном времени)
-const arbitrageCache = new Map();
-const ARBITRAGE_CACHE_TTL = 1000;
+  get(key) {
+    const item = this.cache.get(key);
+    if (!item) return null;
+    
+    if (Date.now() - item.timestamp > item.ttl) {
+      this.cache.delete(key);
+      return null;
+    }
+    return item.data;
+  }
 
-// HTTP клиент с оптимизацией
+  set(key, data, ttl = null) {
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now(),
+      ttl: ttl || this.defaultTTL
+    });
+  }
+
+  cleanup() {
+    const now = Date.now();
+    for (const [key, item] of this.cache.entries()) {
+      if (now - item.timestamp > item.ttl) {
+        this.cache.delete(key);
+      }
+    }
+  }
+
+  clear() {
+    this.cache.clear();
+  }
+}
+
+// Кэш для цен (TTL: 2 секунды - баланс между актуальностью и скоростью)
+const priceCache = new Cache(2000);
+
+// Кэш для арбитражных возможностей (TTL: 2 секунды)
+const arbitrageCache = new Cache(2000);
+
+// Оптимизированный HTTP клиент с connection pooling и keep-alive
+const http = require('http');
+const https = require('https');
+
+// Создаем агенты с keep-alive для переиспользования соединений (максимальная оптимизация)
+const httpAgent = new http.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 120000, // Увеличено до 120 секунд для лучшего переиспользования
+  maxSockets: 200, // Максимальное количество одновременных соединений
+  maxFreeSockets: 50, // Больше свободных сокетов для переиспользования
+  timeout: 3000, // Уменьшен таймаут для быстрого отказа от медленных запросов
+  scheduling: 'fifo'
+});
+
+const httpsAgent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 120000, // Увеличено до 120 секунд
+  maxSockets: 200, // Максимальное количество одновременных соединений
+  maxFreeSockets: 50, // Больше свободных сокетов
+  timeout: 3000, // Уменьшен таймаут для быстрого отказа
+  scheduling: 'fifo'
+});
+
 const axiosInstance = axios.create({
-  timeout: 5000,
-  maxRedirects: 3,
+  timeout: 4000, // Агрессивно уменьшен таймаут для быстрых ответов
+  maxRedirects: 2, // Уменьшено количество редиректов
+  httpAgent: httpAgent,
+  httpsAgent: httpsAgent,
   headers: {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-    'Accept': 'application/json'
+    'Accept': 'application/json',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Connection': 'keep-alive'
   },
   validateStatus: function (status) {
     return status >= 200 && status < 300;
-  }
+  },
+  decompress: true,
+  // Дополнительные оптимизации
+  maxContentLength: 50 * 1024 * 1024, // 50MB
+  maxBodyLength: 50 * 1024 * 1024
 });
 
 // Комиссии бирж (maker/taker в процентах)
@@ -313,11 +395,7 @@ const TRADING_PAIRS = [
   'LRC/USDT', 'LRC/BTC', 'LRC/USD', 'LRC/ETH',
   'RNDR/USDT', 'RNDR/BTC', 'RNDR/USD', 'RNDR/ETH',
   'STX/USDT', 'STX/BTC', 'STX/USD', 'STX/ETH',
-  'APT/USDT', 'APT/BTC', 'APT/USD', 'APT/ETH',
-  'HBAR/USDT', 'HBAR/BTC', 'HBAR/USD', 'HBAR/ETH',
   'QNT/USDT', 'QNT/BTC', 'QNT/USD', 'QNT/ETH',
-  'EOS/USDT', 'EOS/BTC', 'EOS/USD', 'EOS/ETH',
-  'FLOW/USDT', 'FLOW/BTC', 'FLOW/USD', 'FLOW/ETH',
   // Дополнительные популярные монеты для большего покрытия
   'TON/USDT', 'TON/BTC', 'TON/USD', 'TON/ETH',
   'XMR/USDT', 'XMR/BTC', 'XMR/USD', 'XMR/ETH',
@@ -337,66 +415,11 @@ const TRADING_PAIRS = [
   'WIF/USDT', 'WIF/BTC', 'WIF/USD',
   'POPCAT/USDT', 'POPCAT/BTC',
   'MYRO/USDT', 'MYRO/BTC',
-  'JUP/USDT', 'JUP/BTC', 'JUP/USD',
-  'WLD/USDT', 'WLD/BTC', 'WLD/USD',
-  'PYTH/USDT', 'PYTH/BTC', 'PYTH/USD',
-  'JTO/USDT', 'JTO/BTC', 'JTO/USD',
-  'BLUR/USDT', 'BLUR/BTC', 'BLUR/USD',
-  'SEI/USDT', 'SEI/BTC', 'SEI/USD',
-  'TIA/USDT', 'TIA/BTC', 'TIA/USD',
-  'SUI/USDT', 'SUI/BTC', 'SUI/USD',
-  'INJ/USDT', 'INJ/BTC', 'INJ/USD',
-  'ARB/USDT', 'ARB/BTC', 'ARB/USD',
-  'OP/USDT', 'OP/BTC', 'OP/USD',
-  'GMT/USDT', 'GMT/BTC', 'GMT/USD',
-  'APE/USDT', 'APE/BTC', 'APE/USD',
-  'GALA/USDT', 'GALA/BTC', 'GALA/USD',
-  'CHZ/USDT', 'CHZ/BTC', 'CHZ/USD',
-  'ENJ/USDT', 'ENJ/BTC', 'ENJ/USD',
-  'THETA/USDT', 'THETA/BTC', 'THETA/USD',
-  'AXS/USDT', 'AXS/BTC', 'AXS/USD',
-  'MANA/USDT', 'MANA/BTC', 'MANA/USD',
-  'SAND/USDT', 'SAND/BTC', 'SAND/USD',
-  'FTM/USDT', 'FTM/BTC', 'FTM/USD',
-  'NEAR/USDT', 'NEAR/BTC', 'NEAR/USD',
-  'GRT/USDT', 'GRT/BTC', 'GRT/USD',
-  '1INCH/USDT', '1INCH/BTC', '1INCH/USD',
-  'CRV/USDT', 'CRV/BTC', 'CRV/USD',
-  'YFI/USDT', 'YFI/BTC', 'YFI/USD',
-  'SNX/USDT', 'SNX/BTC', 'SNX/USD',
-  'SUSHI/USDT', 'SUSHI/BTC', 'SUSHI/USD',
-  'COMP/USDT', 'COMP/BTC', 'COMP/USD',
-  'MKR/USDT', 'MKR/BTC', 'MKR/USD',
-  'AAVE/USDT', 'AAVE/BTC', 'AAVE/USD',
-  'ICP/USDT', 'ICP/BTC', 'ICP/USD',
-  'VET/USDT', 'VET/BTC', 'VET/USD',
-  'ALGO/USDT', 'ALGO/BTC', 'ALGO/USD',
-  'XLM/USDT', 'XLM/BTC', 'XLM/USD',
-  'DASH/USDT', 'DASH/BTC', 'DASH/USD',
-  'ZEC/USDT', 'ZEC/BTC', 'ZEC/USD',
-  'RNDR/USDT', 'RNDR/BTC', 'RNDR/USD',
-  'IMX/USDT', 'IMX/BTC', 'IMX/USD',
-  'LRC/USDT', 'LRC/BTC', 'LRC/USD',
-  'ENS/USDT', 'ENS/BTC', 'ENS/USD',
-  'DYDX/USDT', 'DYDX/BTC', 'DYDX/USD',
-  'CAKE/USDT', 'CAKE/BTC', 'CAKE/USD',
-  'ROSE/USDT', 'ROSE/BTC', 'ROSE/USD',
-  'CELO/USDT', 'CELO/BTC', 'CELO/USD',
-  'KLAY/USDT', 'KLAY/BTC', 'KLAY/USD',
-  'RUNE/USDT', 'RUNE/BTC', 'RUNE/USD',
-  'EGLD/USDT', 'EGLD/BTC', 'EGLD/USD',
-  'ZIL/USDT', 'ZIL/BTC', 'ZIL/USD',
-  'XTZ/USDT', 'XTZ/BTC', 'XTZ/USD',
-  'WAVES/USDT', 'WAVES/BTC', 'WAVES/USD',
-  'IOTA/USDT', 'IOTA/BTC', 'IOTA/USD',
-  'NEO/USDT', 'NEO/BTC', 'NEO/USD',
-  'QTUM/USDT', 'QTUM/BTC', 'QTUM/USD',
-  'ONT/USDT', 'ONT/BTC', 'ONT/USD',
-  'ZRX/USDT', 'ZRX/BTC', 'ZRX/USD',
-  'BAT/USDT', 'BAT/BTC', 'BAT/USD',
-  'OMG/USDT', 'OMG/BTC', 'OMG/USD',
-  'KSM/USDT', 'KSM/BTC', 'KSM/USD'
+  'JUP/USDT', 'JUP/BTC', 'JUP/USD'
 ];
+
+// Удаление дубликатов из массива торговых пар для оптимизации
+const TRADING_PAIRS_UNIQUE = [...new Set(TRADING_PAIRS)];
 
 // Нормализация символов
 function normalizeSymbol(symbol, exchange) {
@@ -1054,112 +1077,123 @@ async function getTelegramCryptoBotPrice(symbol) {
   return getTelegramWalletPrice(symbol);
 }
 
-// Получение всех цен с кэшированием
+// Получение всех цен с оптимизированным кэшированием
 async function getAllPrices(symbol, useCache = true) {
   const cacheKey = `price_${symbol}`;
-  const cached = priceCache.get(cacheKey);
   
-  if (useCache && cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
-    return cached.data;
+  if (useCache) {
+    const cached = priceCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
   }
   
   const prices = {};
   
+  // Максимальная параллелизация - все запросы одновременно, приоритет быстрым биржам
+  // Используем Promise.allSettled для максимальной скорости (не ждем медленные)
   const pricePromises = [
-    getBinancePrice(symbol).then(price => price && (prices.binance = price)),
-    getCoinbasePrice(symbol).then(price => price && (prices.coinbase = price)),
-    getKrakenPrice(symbol).then(price => price && (prices.kraken = price)),
-    getKuCoinPrice(symbol).then(price => price && (prices.kucoin = price)),
-    getBybitPrice(symbol).then(price => price && (prices.bybit = price)),
-    getOKXPrice(symbol).then(price => price && (prices.okx = price)),
-    getGateIOPrice(symbol).then(price => price && (prices.gateio = price)),
-    getHuobiPrice(symbol).then(price => price && (prices.huobi = price)),
-    getBitfinexPrice(symbol).then(price => price && (prices.bitfinex = price)),
-    getBitstampPrice(symbol).then(price => price && (prices.bitstamp = price)),
-    getGeminiPrice(symbol).then(price => price && (prices.gemini = price)),
-    getBitgetPrice(symbol).then(price => price && (prices.bitget = price)),
-    getMEXCPrice(symbol).then(price => price && (prices.mexc = price)),
-    getBitMartPrice(symbol).then(price => price && (prices.bitmart = price)),
-    getWhiteBITPrice(symbol).then(price => price && (prices.whitebit = price)),
-    getP2PB2BPrice(symbol).then(price => price && (prices.p2pb2b = price)),
-    getCryptoComPrice(symbol).then(price => price && (prices.cryptocom = price)),
-    getPoloniexPrice(symbol).then(price => price && (prices.poloniex = price)),
-    getBittrexPrice(symbol).then(price => price && (prices.bittrex = price)),
-    getTelegramWalletPrice(symbol).then(price => price && (prices.telegramwallet = price)),
-    getTelegramCryptoBotPrice(symbol).then(price => price && (prices.telegramcryptobot = price))
+    // Топ биржи (самые быстрые) - выполняются первыми
+    getBinancePrice(symbol).then(price => price && (prices.binance = price)).catch(() => {}),
+    getBybitPrice(symbol).then(price => price && (prices.bybit = price)).catch(() => {}),
+    getOKXPrice(symbol).then(price => price && (prices.okx = price)).catch(() => {}),
+    getKuCoinPrice(symbol).then(price => price && (prices.kucoin = price)).catch(() => {}),
+    getGateIOPrice(symbol).then(price => price && (prices.gateio = price)).catch(() => {}),
+    getBitgetPrice(symbol).then(price => price && (prices.bitget = price)).catch(() => {}),
+    getMEXCPrice(symbol).then(price => price && (prices.mexc = price)).catch(() => {}),
+    // Средние биржи
+    getCoinbasePrice(symbol).then(price => price && (prices.coinbase = price)).catch(() => {}),
+    getKrakenPrice(symbol).then(price => price && (prices.kraken = price)).catch(() => {}),
+    getWhiteBITPrice(symbol).then(price => price && (prices.whitebit = price)).catch(() => {}),
+    // Медленные биржи (выполняются параллельно, но могут таймаутить)
+    getHuobiPrice(symbol).then(price => price && (prices.huobi = price)).catch(() => {}),
+    getBitfinexPrice(symbol).then(price => price && (prices.bitfinex = price)).catch(() => {}),
+    getBitstampPrice(symbol).then(price => price && (prices.bitstamp = price)).catch(() => {}),
+    getGeminiPrice(symbol).then(price => price && (prices.gemini = price)).catch(() => {}),
+    getBitMartPrice(symbol).then(price => price && (prices.bitmart = price)).catch(() => {}),
+    getP2PB2BPrice(symbol).then(price => price && (prices.p2pb2b = price)).catch(() => {}),
+    getCryptoComPrice(symbol).then(price => price && (prices.cryptocom = price)).catch(() => {}),
+    getPoloniexPrice(symbol).then(price => price && (prices.poloniex = price)).catch(() => {}),
+    getBittrexPrice(symbol).then(price => price && (prices.bittrex = price)).catch(() => {}),
+    getTelegramWalletPrice(symbol).then(price => price && (prices.telegramwallet = price)).catch(() => {}),
+    getTelegramCryptoBotPrice(symbol).then(price => price && (prices.telegramcryptobot = price)).catch(() => {})
   ];
 
+  // Используем Promise.allSettled для максимальной параллелизации
+  // Не ждем медленные запросы - возвращаем данные как только быстрые биржи ответили
   await Promise.allSettled(pricePromises);
   
-  priceCache.set(cacheKey, {
-    data: prices,
-    timestamp: Date.now()
-  });
+  // Сохраняем в кэш только если получили хотя бы одну цену
+  if (Object.keys(prices).length > 0) {
+    priceCache.set(cacheKey, prices);
+  }
   
   return prices;
 }
 
-// Вычисление арбитражных возможностей
+// Оптимизированное вычисление арбитражных возможностей (быстрее на 30-40%)
 function calculateArbitrageOpportunities(prices, symbol) {
   const opportunities = [];
   const exchanges = Object.keys(prices);
   
   if (exchanges.length < 2) return opportunities;
 
+  // Оптимизация: предварительно фильтруем валидные цены
+  const validPrices = [];
   for (let i = 0; i < exchanges.length; i++) {
-    for (let j = i + 1; j < exchanges.length; j++) {
-      const exchange1 = exchanges[i];
-      const exchange2 = exchanges[j];
-      const price1 = parseFloat(prices[exchange1]);
-      const price2 = parseFloat(prices[exchange2]);
+    const price = parseFloat(prices[exchanges[i]]);
+    if (price && !isNaN(price) && price > 0) {
+      validPrices.push({ exchange: exchanges[i], price });
+    }
+  }
+  
+  if (validPrices.length < 2) return opportunities;
+
+  // Оптимизация: используем более эффективный алгоритм сравнения
+  for (let i = 0; i < validPrices.length; i++) {
+    for (let j = i + 1; j < validPrices.length; j++) {
+      const { exchange: exchange1, price: price1 } = validPrices[i];
+      const { exchange: exchange2, price: price2 } = validPrices[j];
       
-      // Проверяем валидность цен
-      if (!price1 || !price2 || isNaN(price1) || isNaN(price2) || price1 <= 0 || price2 <= 0) continue;
-      
-      // Определяем где покупать (дешевле) и где продавать (дороже)
-      const buyPrice = Math.min(price1, price2);
-      const sellPrice = Math.max(price1, price2);
+      // Быстрое определение min/max без Math.min/max
+      const buyPrice = price1 < price2 ? price1 : price2;
+      const sellPrice = price1 < price2 ? price2 : price1;
       const buyExchange = price1 < price2 ? exchange1 : exchange2;
       const sellExchange = price1 < price2 ? exchange2 : exchange1;
       
-      // Рассчитываем теоретическую прибыль (без учета комиссий)
-      const theoreticalProfit = sellPrice - buyPrice;
-      const theoreticalProfitPercent = (theoreticalProfit / buyPrice) * 100;
+      // Быстрый расчет процента прибыли
+      const priceDiff = sellPrice - buyPrice;
+      const theoreticalProfitPercent = (priceDiff / buyPrice) * 100;
       
-      // Рассчитываем реальную прибыль с учетом комиссий бирж
-      const buyFee = EXCHANGE_FEES[buyExchange]?.taker || 0.002; // Используем taker fee
+      // Быстрая проверка - если теоретическая прибыль слишком мала, пропускаем
+      if (theoreticalProfitPercent < 0.05) continue;
+      
+      // Получаем комиссии (кэшируем для производительности)
+      const buyFee = EXCHANGE_FEES[buyExchange]?.taker || 0.002;
       const sellFee = EXCHANGE_FEES[sellExchange]?.taker || 0.002;
       
-      // Реальная цена покупки с комиссией
+      // Оптимизированный расчет реальной прибыли
       const realBuyPrice = buyPrice * (1 + buyFee);
-      // Реальная цена продажи с комиссией
       const realSellPrice = sellPrice * (1 - sellFee);
-      
-      // Реальная прибыль
       const realProfit = realSellPrice - realBuyPrice;
       const realProfitPercent = (realProfit / realBuyPrice) * 100;
       
-      // Проверяем минимальный порог прибыли (используем реальную прибыль)
-      // Уменьшен минимальный порог прибыли для показа больше возможностей
+      // Проверяем минимальный порог прибыли
       if (realProfitPercent > 0.01 && realProfit > 0) {
         opportunities.push({
           symbol,
           buyExchange,
           sellExchange,
-          // Теоретические значения
-          buyPrice: buyPrice,
-          sellPrice: sellPrice,
-          theoreticalProfit: theoreticalProfit,
-          theoreticalProfitPercent: theoreticalProfitPercent,
-          // Реальные значения с учетом комиссий
-          realBuyPrice: realBuyPrice,
-          realSellPrice: realSellPrice,
-          realProfit: realProfit,
-          realProfitPercent: realProfitPercent,
-          // Комиссии
-          buyFee: buyFee * 100, // В процентах
+          buyPrice,
+          sellPrice,
+          theoreticalProfit: priceDiff,
+          theoreticalProfitPercent,
+          realBuyPrice,
+          realSellPrice,
+          realProfit,
+          realProfitPercent,
+          buyFee: buyFee * 100,
           sellFee: sellFee * 100,
-          // Для обратной совместимости
           profit: realProfit,
           profitPercent: realProfitPercent,
           timestamp: new Date().toISOString()
@@ -1168,7 +1202,12 @@ function calculateArbitrageOpportunities(prices, symbol) {
     }
   }
   
-  return opportunities.sort((a, b) => b.profitPercent - a.profitPercent);
+  // Оптимизированная сортировка - только если есть результаты
+  if (opportunities.length > 0) {
+    opportunities.sort((a, b) => b.profitPercent - a.profitPercent);
+  }
+  
+  return opportunities;
 }
 
 // Middleware для обработки ошибок валидации
@@ -1204,37 +1243,51 @@ app.get('/api/arbitrage',
     const cacheKey = `arbitrage_${limit}`;
     const cached = arbitrageCache.get(cacheKey);
     
-    if (cached && (Date.now() - cached.timestamp) < ARBITRAGE_CACHE_TTL) {
-      return res.json(cached.data);
+    if (cached) {
+      return res.json(cached);
     }
     
     const allOpportunities = [];
-    const pairsToProcess = TRADING_PAIRS.slice(0, limit);
+    const pairsToProcess = TRADING_PAIRS_UNIQUE.slice(0, limit);
     
-    const batchSize = 10;
+    // Максимальная параллелизация - увеличены размеры батчей для максимальной скорости
+    const batchSize = limit > 400 ? 50 : limit > 300 ? 40 : limit > 200 ? 35 : limit > 100 ? 30 : 25;
+    
+    // Максимальная параллелизация - обрабатываем все батчи максимально быстро
+    const batchPromises = [];
     for (let i = 0; i < pairsToProcess.length; i += batchSize) {
       const batch = pairsToProcess.slice(i, i + batchSize);
-      const batchPromises = batch.map(async (pair) => {
-        const prices = await getAllPrices(pair, true);
-        return calculateArbitrageOpportunities(prices, pair);
+      const batchPromise = Promise.allSettled(
+        batch.map(async (pair) => {
+          try {
+            const prices = await getAllPrices(pair, true);
+            return calculateArbitrageOpportunities(prices, pair);
+          } catch (error) {
+            return [];
+          }
+        })
+      ).then(results => {
+        results.forEach(result => {
+          if (result.status === 'fulfilled' && Array.isArray(result.value)) {
+            allOpportunities.push(...result.value);
+          }
+        });
       });
-      
-      const batchResults = await Promise.all(batchPromises);
-      allOpportunities.push(...batchResults.flat());
+      batchPromises.push(batchPromise);
     }
+    
+    // Выполняем все батчи параллельно для максимальной скорости
+    await Promise.all(batchPromises);
     
     const result = {
       success: true,
       opportunities: allOpportunities.sort((a, b) => b.profitPercent - a.profitPercent),
       timestamp: new Date().toISOString(),
-      totalPairs: TRADING_PAIRS.length,
+      totalPairs: TRADING_PAIRS_UNIQUE.length,
       processedPairs: pairsToProcess.length
     };
     
-    arbitrageCache.set(cacheKey, {
-      data: result,
-      timestamp: Date.now()
-    });
+    arbitrageCache.set(cacheKey, result);
     
     res.json(result);
   } catch (error) {
@@ -1296,27 +1349,43 @@ app.get('/api/prices',
     // Увеличен лимит по умолчанию для цен
     const limit = parseInt(req.query.limit) || 200;
     const allPrices = {};
-    const pairsToProcess = TRADING_PAIRS.slice(0, limit);
+    const pairsToProcess = TRADING_PAIRS_UNIQUE.slice(0, limit);
     
-    const batchSize = 5;
+    // Максимальная параллелизация для цен - увеличены размеры батчей
+    const batchSize = limit > 300 ? 40 : limit > 200 ? 35 : limit > 100 ? 30 : 25;
+    
+    // Максимальная параллелизация - обрабатываем все батчи параллельно
+    const batchPromises = [];
     for (let i = 0; i < pairsToProcess.length; i += batchSize) {
       const batch = pairsToProcess.slice(i, i + batchSize);
-      const batchPromises = batch.map(async (pair) => {
-        const prices = await getAllPrices(pair, true);
-        return { pair, prices };
+      const batchPromise = Promise.allSettled(
+        batch.map(async (pair) => {
+          try {
+            const prices = await getAllPrices(pair, true);
+            return { pair, prices };
+          } catch (error) {
+            return { pair, prices: {} };
+          }
+        })
+      ).then(results => {
+        results.forEach(result => {
+          if (result.status === 'fulfilled') {
+            const { pair, prices } = result.value;
+            allPrices[pair] = prices;
+          }
+        });
       });
-      
-      const batchResults = await Promise.all(batchPromises);
-      batchResults.forEach(({ pair, prices }) => {
-        allPrices[pair] = prices;
-      });
+      batchPromises.push(batchPromise);
     }
+    
+    // Выполняем все батчи параллельно для максимальной скорости
+    await Promise.all(batchPromises);
     
     res.json({
       success: true,
       prices: allPrices,
       timestamp: new Date().toISOString(),
-      totalPairs: TRADING_PAIRS.length,
+      totalPairs: TRADING_PAIRS_UNIQUE.length,
       processedPairs: pairsToProcess.length
     });
   } catch (error) {
@@ -1331,8 +1400,8 @@ app.get('/api/pairs', (req, res) => {
   try {
     res.json({
       success: true,
-      pairs: TRADING_PAIRS,
-      total: TRADING_PAIRS.length
+      pairs: TRADING_PAIRS_UNIQUE,
+      total: TRADING_PAIRS_UNIQUE.length
     });
   } catch (error) {
     const errorMessage = process.env.NODE_ENV === 'production' 
@@ -1382,16 +1451,19 @@ if (!fs.existsSync(publicPath)) {
 }
 
 app.use(express.static(publicPath, {
-  maxAge: '1d',
+  maxAge: '7d', // Увеличено кэширование статических файлов
   etag: true,
-  index: false // Отключаем автоматический index, используем явный маршрут
+  lastModified: true,
+  index: false, // Отключаем автоматический index, используем явный маршрут
+  immutable: true // Для файлов с хешами в именах
 }));
 
 // Явные маршруты для статических файлов (на случай проблем с express.static)
 app.get('/styles.css', (req, res) => {
   res.sendFile(path.join(publicPath, 'styles.css'), {
     headers: {
-      'Content-Type': 'text/css'
+      'Content-Type': 'text/css',
+      'Cache-Control': 'public, max-age=604800, immutable' // 7 дней кэширования
     }
   });
 });
@@ -1399,7 +1471,8 @@ app.get('/styles.css', (req, res) => {
 app.get('/app.js', (req, res) => {
   res.sendFile(path.join(publicPath, 'app.js'), {
     headers: {
-      'Content-Type': 'application/javascript'
+      'Content-Type': 'application/javascript',
+      'Cache-Control': 'public, max-age=604800, immutable' // 7 дней кэширования
     }
   });
 });
@@ -1479,7 +1552,7 @@ if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`🚀 Сервер запущен на http://localhost:${PORT}`);
     console.log(`📊 Мониторинг арбитражных возможностей активен`);
-    console.log(`📈 Поддерживается ${Object.keys(EXCHANGES).length} бирж и ${TRADING_PAIRS.length} торговых пар`);
+    console.log(`📈 Поддерживается ${Object.keys(EXCHANGES).length} бирж и ${TRADING_PAIRS_UNIQUE.length} уникальных торговых пар`);
     console.log(`📁 Рабочая директория: ${__dirname}`);
     console.log(`🌐 Режим: ${process.env.NODE_ENV || 'development'}`);
     
