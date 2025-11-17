@@ -19,8 +19,27 @@
                 <div class="logo-section">
                     <div class="logo-icon">💎</div>
                     <div class="logo-text">
-                        <h1>Крипто Арбитраж</h1>
-                        <p class="tagline">Межбиржевая торговля</p>
+                        <h1 data-i18n="app.title">Крипто Арбитраж</h1>
+                        <p class="tagline" data-i18n="app.tagline">Межбиржевая торговля</p>
+                    </div>
+                </div>
+                <div class="header-controls">
+                    <div class="control-group">
+                        <button id="themeToggle" class="control-btn" title="Переключить тему">
+                            <span class="theme-icon">🌓</span>
+                        </button>
+                        <select id="colorSchemeSelect" class="control-select" title="Цветовая схема">
+                            <option value="default">🎨 По умолчанию</option>
+                            <option value="blue">🔵 Синяя</option>
+                            <option value="green">🟢 Зеленая</option>
+                            <option value="purple">🟣 Фиолетовая</option>
+                            <option value="red">🔴 Красная</option>
+                        </select>
+                        <select id="languageSelect" class="control-select" title="Выбрать язык">
+                            <option value="ru">🇷🇺 RU</option>
+                            <option value="ua">🇺🇦 UA</option>
+                            <option value="en">🇬🇧 EN</option>
+                        </select>
                     </div>
                 </div>
                 <div class="header-stats">
@@ -53,10 +72,6 @@
                         <span class="btn-icon">▶️</span>
                         <span id="autoRefreshText">Автообновление</span>
                     </button>
-                    <button id="exportBtn" class="btn btn-outline">
-                        <span class="btn-icon">📥</span>
-                        <span>Экспорт</span>
-                    </button>
                     <button id="notificationsBtn" class="btn btn-outline">
                         <span class="btn-icon">🔔</span>
                         <span>Уведомления</span>
@@ -65,12 +80,22 @@
                 
                 <div class="filters-row">
                     <div class="filter-group">
-                        <label>Фильтр по прибыли:</label>
+                        <label data-i18n="filters.profit">Фильтр по прибыли:</label>
                         <div class="profit-filters">
-                            <button class="profit-filter-btn active" data-filter="all">Все</button>
+                            <button class="profit-filter-btn active" data-filter="all" data-i18n="filters.all">Все</button>
                             <button class="profit-filter-btn" data-filter="0.5-1">0.5% - 1%</button>
                             <button class="profit-filter-btn" data-filter="1-5">1% - 5%</button>
                             <button class="profit-filter-btn" data-filter="5-50">5% - 50%</button>
+                        </div>
+                        <div class="profit-range-filter">
+                            <label data-i18n="filters.customRange">Диапазон:</label>
+                            <div class="range-inputs">
+                                <input type="number" id="profitMin" class="range-input" placeholder="Мин" min="0" step="0.1">
+                                <span>-</span>
+                                <input type="number" id="profitMax" class="range-input" placeholder="Макс" min="0" step="0.1">
+                                <span>%</span>
+                                <button id="applyRangeFilter" class="range-btn" data-i18n="filters.apply">Применить</button>
+                            </div>
                         </div>
                     </div>
                     <div class="filter-group">

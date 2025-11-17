@@ -11,10 +11,67 @@ let notificationSettings = {
   threshold: 1
 };
 
+// Настройки темы и языка
+let currentTheme = localStorage.getItem('theme') || 'dark';
+let currentColorScheme = localStorage.getItem('colorScheme') || 'default';
+let currentLanguage = localStorage.getItem('language') || 'ru';
+let customProfitRange = {
+  min: null,
+  max: null
+};
+
+// Переводы
+const translations = {
+  ru: {
+    'app.title': 'Крипто Арбитраж',
+    'app.tagline': 'Межбиржевая торговля',
+    'filters.profit': 'Фильтр по прибыли:',
+    'filters.all': 'Все',
+    'filters.customRange': 'Диапазон:',
+    'filters.apply': 'Применить',
+    'opportunity.buy': 'Купить на:',
+    'opportunity.sell': 'Продать на:',
+    'opportunity.buyPrice': 'Цена покупки:',
+    'opportunity.sellPrice': 'Цена продажи:',
+    'opportunity.theoreticalProfit': 'Теоретическая прибыль:',
+    'opportunity.realProfit': 'Реальная прибыль:',
+    'opportunity.fees': 'Комиссии:'
+  },
+  ua: {
+    'app.title': 'Крипто Арбітраж',
+    'app.tagline': 'Міжбіржова торгівля',
+    'filters.profit': 'Фільтр за прибутком:',
+    'filters.all': 'Всі',
+    'filters.customRange': 'Діапазон:',
+    'filters.apply': 'Застосувати',
+    'opportunity.buy': 'Купити на:',
+    'opportunity.sell': 'Продати на:',
+    'opportunity.buyPrice': 'Ціна покупки:',
+    'opportunity.sellPrice': 'Ціна продажу:',
+    'opportunity.theoreticalProfit': 'Теоретичний прибуток:',
+    'opportunity.realProfit': 'Реальний прибуток:',
+    'opportunity.fees': 'Комісії:'
+  },
+  en: {
+    'app.title': 'Crypto Arbitrage',
+    'app.tagline': 'Cross-exchange Trading',
+    'filters.profit': 'Profit Filter:',
+    'filters.all': 'All',
+    'filters.customRange': 'Range:',
+    'filters.apply': 'Apply',
+    'opportunity.buy': 'Buy on:',
+    'opportunity.sell': 'Sell on:',
+    'opportunity.buyPrice': 'Buy Price:',
+    'opportunity.sellPrice': 'Sell Price:',
+    'opportunity.theoreticalProfit': 'Theoretical Profit:',
+    'opportunity.realProfit': 'Real Profit:',
+    'opportunity.fees': 'Fees:'
+  }
+};
+
 // Элементы DOM
 const refreshBtn = document.getElementById('refreshBtn');
 const autoRefreshBtn = document.getElementById('autoRefreshBtn');
-const exportBtn = document.getElementById('exportBtn');
 const notificationsBtn = document.getElementById('notificationsBtn');
 const closeNotifications = document.getElementById('closeNotifications');
 const notificationPanel = document.getElementById('notificationPanel');
@@ -110,10 +167,27 @@ function throttle(func, limit) {
     };
 }
 
+// Безопасное экранирование HTML для защиты от XSS
 function escapeHtml(text) {
+    if (text === null || text === undefined) return '';
+    
     const div = document.createElement('div');
-    div.textContent = text;
+    div.textContent = String(text);
     return div.innerHTML;
+}
+
+// Валидация и санитизация входных данных
+function sanitizeInput(input) {
+    if (typeof input !== 'string') return '';
+    // Удаляем потенциально опасные символы
+    return input.replace(/[<>'"&]/g, '');
+}
+
+// Валидация символа торговой пары
+function validateSymbol(symbol) {
+    if (!symbol || typeof symbol !== 'string') return false;
+    // Разрешаем только буквы, цифры и слэш
+    return /^[A-Z0-9]+\/[A-Z0-9]+$/i.test(symbol);
 }
 
 function animateNumber(element, targetValue) {
@@ -186,9 +260,15 @@ async function loadArbitrageOpportunities(showLoading = true) {
             opportunitiesLow.innerHTML = '<div class="loading">Загрузка...</div>';
         }
         
-        const response = await fetch(`${API_BASE}/arbitrage?limit=100`, {
+        // Добавляем timestamp для предотвращения кэширования браузером
+        const timestamp = Date.now();
+        const response = await fetch(`${API_BASE}/arbitrage?limit=100&_t=${timestamp}`, {
             cache: 'no-cache',
-            headers: { 'Cache-Control': 'no-cache' }
+            headers: { 
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+            }
         });
         const data = await response.json();
         
@@ -230,34 +310,70 @@ function displayOpportunities(opportunities) {
         );
     }
     
-    // Фильтрация по кнопкам
-    const activeFilter = document.querySelector('.profit-filter-btn.active')?.dataset.filter;
-    if (activeFilter && activeFilter !== 'all') {
-        if (activeFilter === '0.5-1') {
-            filtered = filtered.filter(o => o.profitPercent >= 0.5 && o.profitPercent < 1);
-        } else if (activeFilter === '1-5') {
-            filtered = filtered.filter(o => o.profitPercent >= 1 && o.profitPercent < 5);
-        } else if (activeFilter === '5-50') {
-            filtered = filtered.filter(o => o.profitPercent >= 5);
+    // Фильтрация по кастомному диапазону (приоритет над кнопками)
+    if (customProfitRange.min !== null || customProfitRange.max !== null) {
+        filtered = filtered.filter(o => {
+            const profit = parseFloat(o.realProfitPercent) || parseFloat(o.profitPercent) || 0;
+            const minCheck = customProfitRange.min === null || profit >= customProfitRange.min;
+            const maxCheck = customProfitRange.max === null || profit <= customProfitRange.max;
+            return minCheck && maxCheck;
+        });
+    } else {
+        // Фильтрация по кнопкам (если кастомный диапазон не установлен)
+        const activeFilter = document.querySelector('.profit-filter-btn.active')?.dataset.filter;
+        if (activeFilter && activeFilter !== 'all') {
+            if (activeFilter === '0.5-1') {
+                filtered = filtered.filter(o => {
+                    const profit = parseFloat(o.realProfitPercent) || parseFloat(o.profitPercent) || 0;
+                    return profit >= 0.5 && profit < 1;
+                });
+            } else if (activeFilter === '1-5') {
+                filtered = filtered.filter(o => {
+                    const profit = parseFloat(o.realProfitPercent) || parseFloat(o.profitPercent) || 0;
+                    return profit >= 1 && profit < 5;
+                });
+            } else if (activeFilter === '5-50') {
+                filtered = filtered.filter(o => {
+                    const profit = parseFloat(o.realProfitPercent) || parseFloat(o.profitPercent) || 0;
+                    return profit >= 5;
+                });
+            }
         }
     }
     
-    // Сортировка
+    // Сортировка (используем реальную прибыль)
     const sortValue = sortSelect.value;
     if (sortValue === 'profit-desc') {
-        filtered.sort((a, b) => b.profitPercent - a.profitPercent);
+        filtered.sort((a, b) => {
+            const profitA = parseFloat(a.realProfitPercent) || parseFloat(a.profitPercent) || 0;
+            const profitB = parseFloat(b.realProfitPercent) || parseFloat(b.profitPercent) || 0;
+            return profitB - profitA;
+        });
     } else if (sortValue === 'profit-asc') {
-        filtered.sort((a, b) => a.profitPercent - b.profitPercent);
+        filtered.sort((a, b) => {
+            const profitA = parseFloat(a.realProfitPercent) || parseFloat(a.profitPercent) || 0;
+            const profitB = parseFloat(b.realProfitPercent) || parseFloat(b.profitPercent) || 0;
+            return profitA - profitB;
+        });
     } else if (sortValue === 'symbol-asc') {
         filtered.sort((a, b) => a.symbol.localeCompare(b.symbol));
     } else if (sortValue === 'symbol-desc') {
         filtered.sort((a, b) => b.symbol.localeCompare(a.symbol));
     }
     
-    // Категоризация
-    const high = filtered.filter(o => o.profitPercent >= 5);
-    const medium = filtered.filter(o => o.profitPercent >= 1 && o.profitPercent < 5);
-    const low = filtered.filter(o => o.profitPercent >= 0.5 && o.profitPercent < 1);
+    // Категоризация (используем реальную прибыль)
+    const high = filtered.filter(o => {
+        const profit = parseFloat(o.realProfitPercent) || parseFloat(o.profitPercent) || 0;
+        return profit >= 5;
+    });
+    const medium = filtered.filter(o => {
+        const profit = parseFloat(o.realProfitPercent) || parseFloat(o.profitPercent) || 0;
+        return profit >= 1 && profit < 5;
+    });
+    const low = filtered.filter(o => {
+        const profit = parseFloat(o.realProfitPercent) || parseFloat(o.profitPercent) || 0;
+        return profit >= 0.5 && profit < 1;
+    });
     
     countHigh.textContent = high.length;
     countMedium.textContent = medium.length;
@@ -268,40 +384,137 @@ function displayOpportunities(opportunities) {
     opportunitiesLow.innerHTML = low.length > 0 ? renderOpportunities(low) : '<div class="loading">Нет возможностей</div>';
 }
 
+// Умное форматирование чисел для цен
+function formatPrice(price) {
+    if (!price || isNaN(price) || price === null || price === undefined) return '0.00';
+    
+    const num = parseFloat(price);
+    if (isNaN(num)) return '0.00';
+    
+    // Для очень маленьких чисел (< 0.0001) показываем 8 знаков
+    if (num < 0.0001) {
+        return num.toFixed(8);
+    }
+    // Для маленьких чисел (< 0.01) показываем 6 знаков
+    if (num < 0.01) {
+        return num.toFixed(6);
+    }
+    // Для маленьких чисел (< 1) показываем 4 знака
+    if (num < 1) {
+        return num.toFixed(4);
+    }
+    // Для обычных чисел показываем 2 знака
+    if (num < 1000) {
+        return num.toFixed(2);
+    }
+    // Для больших чисел показываем 2 знака с разделителями
+    return num.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Форматирование прибыли
+function formatProfit(profit) {
+    if (!profit || isNaN(profit) || profit === null || profit === undefined) return '0.00';
+    
+    const num = parseFloat(profit);
+    if (isNaN(num)) return '0.00';
+    
+    // Для очень маленьких прибылей показываем больше знаков
+    if (num < 0.0001) {
+        return num.toFixed(8);
+    }
+    if (num < 0.01) {
+        return num.toFixed(6);
+    }
+    if (num < 1) {
+        return num.toFixed(4);
+    }
+    return num.toFixed(2);
+}
+
+// Форматирование процентов
+function formatPercent(percent) {
+    if (!percent || isNaN(percent) || percent === null || percent === undefined) return '0.00';
+    
+    const num = parseFloat(percent);
+    if (isNaN(num)) return '0.00';
+    
+    // Всегда показываем 2 знака после запятой для процентов
+    return num.toFixed(2);
+}
+
 function renderOpportunities(opportunities) {
+    const t = translations[currentLanguage] || translations.ru;
+    
     return opportunities.map(opp => {
-        const profitClass = getProfitBadgeClass(opp.profitPercent);
+        // Парсим и валидируем все значения
+        const buyPrice = parseFloat(opp.buyPrice) || 0;
+        const sellPrice = parseFloat(opp.sellPrice) || 0;
+        const realProfit = parseFloat(opp.realProfit) || parseFloat(opp.profit) || 0;
+        const realProfitPercent = parseFloat(opp.realProfitPercent) || parseFloat(opp.profitPercent) || 0;
+        const theoreticalProfit = parseFloat(opp.theoreticalProfit) || (sellPrice - buyPrice);
+        const theoreticalProfitPercent = parseFloat(opp.theoreticalProfitPercent) || ((theoreticalProfit / buyPrice) * 100);
+        const buyFee = parseFloat(opp.buyFee) || 0;
+        const sellFee = parseFloat(opp.sellFee) || 0;
+        
+        // Проверяем валидность
+        if (isNaN(buyPrice) || isNaN(sellPrice) || isNaN(realProfit) || isNaN(realProfitPercent)) {
+            return ''; // Пропускаем некорректные данные
+        }
+        
+        const profitClass = getProfitBadgeClass(realProfitPercent);
+        
         return `
             <div class="opportunity-card">
                 <div class="opportunity-header">
                     <span class="opportunity-symbol">${escapeHtml(opp.symbol)}</span>
-                    <span class="profit-badge ${profitClass}">+${opp.profitPercent}%</span>
+                    <div class="profit-badges">
+                        <span class="profit-badge ${profitClass}" title="${t['opportunity.realProfit'] || 'Реальная прибыль с учетом комиссий'}">
+                            +${formatPercent(realProfitPercent)}%
+                        </span>
+                        ${theoreticalProfitPercent > realProfitPercent ? `
+                            <span class="profit-badge theoretical" title="${t['opportunity.theoreticalProfit'] || 'Теоретическая прибыль без комиссий'}">
+                                +${formatPercent(theoreticalProfitPercent)}%
+                            </span>
+                        ` : ''}
+                    </div>
                 </div>
                 <div class="opportunity-details">
                     <div class="opportunity-detail">
-                        <span class="detail-label">Купить на:</span>
+                        <span class="detail-label">${t['opportunity.buy'] || 'Купить на:'}</span>
                         <span class="detail-value">${escapeHtml(opp.buyExchange)}</span>
                     </div>
                     <div class="opportunity-detail">
-                        <span class="detail-label">Продать на:</span>
+                        <span class="detail-label">${t['opportunity.sell'] || 'Продать на:'}</span>
                         <span class="detail-value">${escapeHtml(opp.sellExchange)}</span>
                     </div>
                     <div class="opportunity-detail">
-                        <span class="detail-label">Цена покупки:</span>
-                        <span class="detail-value">$${parseFloat(opp.buyPrice).toFixed(2)}</span>
+                        <span class="detail-label">${t['opportunity.buyPrice'] || 'Цена покупки:'}</span>
+                        <span class="detail-value">$${formatPrice(buyPrice)}</span>
                     </div>
                     <div class="opportunity-detail">
-                        <span class="detail-label">Цена продажи:</span>
-                        <span class="detail-value">$${parseFloat(opp.sellPrice).toFixed(2)}</span>
+                        <span class="detail-label">${t['opportunity.sellPrice'] || 'Цена продажи:'}</span>
+                        <span class="detail-value">$${formatPrice(sellPrice)}</span>
                     </div>
-                    <div class="opportunity-detail">
-                        <span class="detail-label">Прибыль:</span>
-                        <span class="detail-value">$${parseFloat(opp.profit).toFixed(2)}</span>
+                    <div class="opportunity-detail real-profit">
+                        <span class="detail-label">${t['opportunity.realProfit'] || 'Реальная прибыль:'}</span>
+                        <span class="detail-value profit-value">$${formatProfit(realProfit)} (+${formatPercent(realProfitPercent)}%)</span>
                     </div>
+                    ${theoreticalProfitPercent > realProfitPercent ? `
+                        <div class="opportunity-detail theoretical-profit">
+                            <span class="detail-label">${t['opportunity.theoreticalProfit'] || 'Теоретическая прибыль:'}</span>
+                            <span class="detail-value">$${formatProfit(theoreticalProfit)} (+${formatPercent(theoreticalProfitPercent)}%)</span>
+                        </div>
+                    ` : ''}
+                    ${buyFee > 0 || sellFee > 0 ? `
+                        <div class="opportunity-detail fees">
+                            <span class="detail-label">${t['opportunity.fees'] || 'Комиссии:'}</span>
+                            <span class="detail-value">${buyFee.toFixed(2)}% / ${sellFee.toFixed(2)}%</span>
+                        </div>
+                    ` : ''}
                 </div>
             </div>
         `;
-    }).join('');
+    }).filter(html => html !== '').join(''); // Убираем пустые элементы
 }
 
 // Загрузка цен
@@ -340,7 +553,7 @@ function updatePricesTable(prices) {
             const cells = exchanges.map(exchange => {
                 const price = pairPrices[exchange];
                 return price 
-                    ? `<td class="price-value" data-exchange="${exchange}" data-pair="${pair}">$${parseFloat(price).toFixed(2)}</td>`
+                    ? `<td class="price-value" data-exchange="${exchange}" data-pair="${pair}">$${formatPrice(price)}</td>`
                     : `<td class="price-unavailable" data-exchange="${exchange}" data-pair="${pair}">-</td>`;
             }).join('');
             
@@ -369,7 +582,7 @@ function updatePricesTable(prices) {
                     if (newPrice !== oldPrice) {
                         if (newPrice) {
                             cell.className = 'price-value updating';
-                            cell.textContent = `$${parseFloat(newPrice).toFixed(2)}`;
+                            cell.textContent = `$${formatPrice(newPrice)}`;
                             setTimeout(() => cell.classList.remove('updating'), 500);
                         } else {
                             cell.className = 'price-unavailable';
@@ -399,13 +612,14 @@ function updatePricesTable(prices) {
 }
 
 function calculateArbitrageForPair(prices) {
-    const validPrices = Object.values(prices).filter(p => p !== null && p !== undefined);
+    const validPrices = Object.values(prices).filter(p => p !== null && p !== undefined && p > 0);
     if (validPrices.length < 2) return null;
     
     const minPrice = Math.min(...validPrices);
     const maxPrice = Math.max(...validPrices);
-    const avgPrice = (minPrice + maxPrice) / 2;
-    const profitPercent = ((maxPrice - minPrice) / avgPrice) * 100;
+    
+    // Правильный расчет процента прибыли от минимальной цены (цены покупки)
+    const profitPercent = ((maxPrice - minPrice) / minPrice) * 100;
     
     return profitPercent > 0.1 ? profitPercent : null;
 }
@@ -430,7 +644,7 @@ function updatePricesCards(prices) {
                     <div class="price-card-exchange">
                         <div class="price-card-exchange-name">${exchangeNames[exchange]}</div>
                         <div class="price-card-exchange-value ${price ? '' : 'unavailable'}">
-                            ${price ? `$${parseFloat(price).toFixed(2)}` : '-'}
+                            ${price ? `$${formatPrice(price)}` : '-'}
                         </div>
                     </div>
                 `;
@@ -477,26 +691,6 @@ function showNotification(message) {
     }
 }
 
-// Экспорт данных
-function exportData() {
-    const data = {
-        opportunities: cachedOpportunities,
-        timestamp: new Date().toISOString(),
-        stats: {
-            exchanges: exchangesCountEl.textContent,
-            pairs: pairsCountEl.textContent,
-            opportunities: opportunitiesCountEl.textContent
-        }
-    };
-    
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `arbitrage-data-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-}
 
 // Обновление временной метки
 function updateTimestamp() {
@@ -519,18 +713,23 @@ function toggleAutoRefresh() {
         document.getElementById('autoRefreshText').textContent = 'Автообновление';
         autoRefreshBtn.classList.remove('active');
     } else {
+        // Обновление арбитражных возможностей каждые 2 секунды
         autoRefreshInterval = setInterval(() => {
             loadArbitrageOpportunities(false);
-        }, 30000);
+        }, 2000);
         
+        // Обновление цен каждые 2 секунды (синхронно с арбитражем)
         pricesUpdateInterval = setInterval(() => {
             loadPrices(false);
-        }, 3000);
+        }, 2000);
+        
+        // Загружаем данные сразу при включении
+        loadArbitrageOpportunities(false);
+        loadPrices(false);
         
         isAutoRefresh = true;
         document.getElementById('autoRefreshText').textContent = 'Остановить';
         autoRefreshBtn.classList.add('active');
-        loadPrices(false);
     }
 }
 
@@ -541,8 +740,6 @@ refreshBtn.addEventListener('click', throttle(() => {
 }, 2000));
 
 autoRefreshBtn.addEventListener('click', toggleAutoRefresh);
-
-exportBtn.addEventListener('click', exportData);
 
 notificationsBtn.addEventListener('click', () => {
     notificationPanel.classList.toggle('open');
@@ -585,8 +782,130 @@ document.getElementById('profitThreshold').addEventListener('input', (e) => {
     document.getElementById('thresholdValue').textContent = `${e.target.value}%`;
 });
 
+// Функции для темы
+function applyTheme(theme) {
+    currentTheme = theme;
+    localStorage.setItem('theme', theme);
+    
+    // Применяем тему с учетом цветовой схемы
+    updateThemeAttribute();
+    
+    const themeIcon = document.querySelector('.theme-icon');
+    if (themeIcon) {
+        themeIcon.textContent = theme === 'dark' ? '🌙' : '☀️';
+    }
+}
+
+function toggleTheme() {
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    applyTheme(newTheme);
+}
+
+// Обновление атрибута темы с учетом цветовой схемы
+function updateThemeAttribute() {
+    if (currentColorScheme !== 'default') {
+        document.documentElement.setAttribute('data-theme', `${currentTheme}-${currentColorScheme}`);
+        document.documentElement.setAttribute('data-color-scheme', currentColorScheme);
+    } else {
+        document.documentElement.setAttribute('data-theme', currentTheme);
+        document.documentElement.removeAttribute('data-color-scheme');
+    }
+}
+
+// Функции для цветовой схемы
+function applyColorScheme(scheme) {
+    currentColorScheme = scheme;
+    localStorage.setItem('colorScheme', scheme);
+    
+    // Обновляем атрибут темы
+    updateThemeAttribute();
+    
+    const colorSchemeSelect = document.getElementById('colorSchemeSelect');
+    if (colorSchemeSelect) {
+        colorSchemeSelect.value = scheme;
+    }
+}
+
+// Функции для языка
+function applyLanguage(lang) {
+    currentLanguage = lang;
+    localStorage.setItem('language', lang);
+    
+    const t = translations[lang] || translations.ru;
+    
+    // Обновляем все элементы с data-i18n
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (t[key]) {
+            el.textContent = t[key];
+        }
+    });
+    
+    // Обновляем селект языка
+    const langSelect = document.getElementById('languageSelect');
+    if (langSelect) {
+        langSelect.value = lang;
+    }
+    
+    // Перерисовываем возможности с новым языком
+    if (cachedOpportunities.length > 0) {
+        displayOpportunities(cachedOpportunities);
+    }
+}
+
+// Функция для применения кастомного диапазона прибыли
+function applyCustomProfitRange() {
+    const minInput = document.getElementById('profitMin');
+    const maxInput = document.getElementById('profitMax');
+    
+    customProfitRange.min = minInput.value ? parseFloat(minInput.value) : null;
+    customProfitRange.max = maxInput.value ? parseFloat(maxInput.value) : null;
+    
+    // Сбрасываем активную кнопку фильтра
+    document.querySelectorAll('.profit-filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    document.querySelector('.profit-filter-btn[data-filter="all"]')?.classList.add('active');
+    
+    // Применяем фильтр
+    if (cachedOpportunities.length > 0) {
+        displayOpportunities(cachedOpportunities);
+    }
+}
+
+// Обработчики для новых элементов
+const themeToggle = document.getElementById('themeToggle');
+const colorSchemeSelect = document.getElementById('colorSchemeSelect');
+const languageSelect = document.getElementById('languageSelect');
+const applyRangeFilter = document.getElementById('applyRangeFilter');
+
+if (themeToggle) {
+    themeToggle.addEventListener('click', toggleTheme);
+}
+
+if (colorSchemeSelect) {
+    colorSchemeSelect.addEventListener('change', (e) => {
+        applyColorScheme(e.target.value);
+    });
+}
+
+if (languageSelect) {
+    languageSelect.addEventListener('change', (e) => {
+        applyLanguage(e.target.value);
+    });
+}
+
+if (applyRangeFilter) {
+    applyRangeFilter.addEventListener('click', applyCustomProfitRange);
+}
+
 // Инициализация
 document.addEventListener('DOMContentLoaded', () => {
+    // Применяем сохраненные настройки
+    applyTheme(currentTheme);
+    applyColorScheme(currentColorScheme);
+    applyLanguage(currentLanguage);
+    
     initView(); // Инициализируем вид
     loadStats();
     loadArbitrageOpportunities();

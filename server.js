@@ -2,29 +2,119 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const path = require('path');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const { body, param, query, validationResult } = require('express-validator');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
-app.use(express.json());
+// Безопасность заголовков с помощью Helmet
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
+  crossOriginEmbedderPolicy: false
+}));
 
-// Кэш для цен (TTL: 3 секунды)
+// Настройка CORS с ограничениями
+const corsOptions = {
+  origin: function (origin, callback) {
+    // В продакшене можно указать конкретные домены
+    // Для разработки разрешаем все, но можно ограничить
+    const allowedOrigins = process.env.ALLOWED_ORIGINS 
+      ? process.env.ALLOWED_ORIGINS.split(',') 
+      : ['*'];
+    
+    if (allowedOrigins.includes('*') || !origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: false,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  maxAge: 86400 // 24 часа
+};
+
+app.use(cors(corsOptions));
+
+// Ограничение размера тела запроса (защита от больших payload)
+app.use(express.json({ limit: '10kb' }));
+app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+
+// Rate limiting для защиты от DDoS и злоупотреблений
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 минут
+  max: 100, // максимум 100 запросов с одного IP за окно
+  message: {
+    error: 'Слишком много запросов с этого IP, попробуйте позже.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Более строгий лимит для API endpoints
+const apiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 минута
+  max: 30, // максимум 30 запросов в минуту
+  message: {
+    error: 'Слишком много запросов к API, попробуйте позже.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Применяем общий rate limiter ко всем запросам
+app.use(limiter);
+
+// Применяем строгий лимит к API endpoints
+app.use('/api/', apiLimiter);
+
+// Кэш для цен (TTL: 2 секунды для более частого обновления)
 const priceCache = new Map();
-const CACHE_TTL = 3000;
+const CACHE_TTL = 2000;
 
-// Кэш для арбитражных возможностей (TTL: 30 секунд)
+// Кэш для арбитражных возможностей (TTL: 2 секунды для частого обновления)
 const arbitrageCache = new Map();
-const ARBITRAGE_CACHE_TTL = 30000;
+const ARBITRAGE_CACHE_TTL = 2000;
 
 // HTTP клиент с оптимизацией
 const axiosInstance = axios.create({
-  timeout: 3000,
+  timeout: 5000,
   maxRedirects: 3,
   headers: {
-    'User-Agent': 'CryptoArbitrageBot/1.0'
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    'Accept': 'application/json'
+  },
+  validateStatus: function (status) {
+    return status >= 200 && status < 300;
   }
 });
+
+// Комиссии бирж (maker/taker в процентах)
+const EXCHANGE_FEES = {
+  binance: { maker: 0.001, taker: 0.001 },      // 0.1%
+  coinbase: { maker: 0.005, taker: 0.005 },     // 0.5%
+  kraken: { maker: 0.0016, taker: 0.0026 },    // 0.16%/0.26%
+  kucoin: { maker: 0.001, taker: 0.001 },      // 0.1%
+  bybit: { maker: 0.001, taker: 0.001 },       // 0.1%
+  okx: { maker: 0.0008, taker: 0.001 },        // 0.08%/0.1%
+  gateio: { maker: 0.002, taker: 0.002 },      // 0.2%
+  huobi: { maker: 0.002, taker: 0.002 },       // 0.2%
+  bitfinex: { maker: 0.001, taker: 0.002 },    // 0.1%/0.2%
+  bitstamp: { maker: 0.005, taker: 0.005 },    // 0.5%
+  gemini: { maker: 0.0025, taker: 0.0035 },    // 0.25%/0.35%
+  bitget: { maker: 0.001, taker: 0.001 },     // 0.1%
+  mexc: { maker: 0.002, taker: 0.002 }         // 0.2%
+};
 
 // Расширенный список бирж
 const EXCHANGES = {
@@ -46,7 +136,7 @@ const EXCHANGES = {
   },
   bybit: {
     name: 'Bybit',
-    tickerUrl: 'https://api.bybit.com/v2/public/tickers'
+    tickerUrl: 'https://api.bybit.com/v5/market/tickers'
   },
   okx: {
     name: 'OKX',
@@ -192,20 +282,72 @@ const TRADING_PAIRS = [
 // Нормализация символов
 function normalizeSymbol(symbol, exchange) {
   const [base, quote] = symbol.split('/');
+  if (!base || !quote) return null;
   
-  if (exchange === 'binance') return `${base}${quote}`;
-  if (exchange === 'coinbase') return `${base}-${quote}`;
-  if (exchange === 'kraken') return `${base}${quote}`;
-  if (exchange === 'kucoin') return `${base}-${quote}`;
-  if (exchange === 'bybit') return `${base}${quote}`;
-  if (exchange === 'okx') return `${base}-${quote}`;
-  if (exchange === 'gateio') return `${base}_${quote}`;
-  if (exchange === 'huobi') return `${base.toLowerCase()}${quote.toLowerCase()}`;
-  if (exchange === 'bitfinex') return `t${base}${quote}`;
-  if (exchange === 'bitstamp') return `${base.toLowerCase()}${quote.toLowerCase()}`;
-  if (exchange === 'gemini') return `${base.toLowerCase()}${quote.toLowerCase()}`;
-  if (exchange === 'bitget') return `${base}${quote}`;
-  if (exchange === 'mexc') return `${base}${quote}`;
+  // Нормализация для каждой биржи
+  if (exchange === 'binance') {
+    // Binance использует формат BTCUSDT (без разделителя, все заглавные)
+    return `${base.toUpperCase()}${quote.toUpperCase()}`;
+  }
+  if (exchange === 'coinbase') {
+    // Coinbase использует формат BTC-USD
+    return `${base.toUpperCase()}-${quote.toUpperCase()}`;
+  }
+  if (exchange === 'kraken') {
+    // Kraken использует специальные форматы для некоторых пар
+    // BTC -> XBT, USD -> ZUSD, USDT -> USDT
+    let krakenBase = base;
+    if (base === 'BTC') krakenBase = 'XBT';
+    else if (base === 'ETH') krakenBase = 'ETH';
+    else krakenBase = base;
+    
+    let krakenQuote = quote;
+    if (quote === 'USD') krakenQuote = 'ZUSD';
+    else if (quote === 'USDT') krakenQuote = 'USDT';
+    else krakenQuote = quote;
+    
+    return `${krakenBase}${krakenQuote}`;
+  }
+  if (exchange === 'kucoin') {
+    // KuCoin использует формат BTC-USDT
+    return `${base.toUpperCase()}-${quote.toUpperCase()}`;
+  }
+  if (exchange === 'bybit') {
+    // Bybit использует формат BTCUSDT
+    return `${base.toUpperCase()}${quote.toUpperCase()}`;
+  }
+  if (exchange === 'okx') {
+    // OKX использует формат BTC-USDT
+    return `${base.toUpperCase()}-${quote.toUpperCase()}`;
+  }
+  if (exchange === 'gateio') {
+    // Gate.io использует формат BTC_USDT
+    return `${base.toUpperCase()}_${quote.toUpperCase()}`;
+  }
+  if (exchange === 'huobi') {
+    // Huobi использует формат btcusdt (все строчные)
+    return `${base.toLowerCase()}${quote.toLowerCase()}`;
+  }
+  if (exchange === 'bitfinex') {
+    // Bitfinex использует формат tBTCUSD
+    return `t${base.toUpperCase()}${quote.toUpperCase()}`;
+  }
+  if (exchange === 'bitstamp') {
+    // Bitstamp использует формат btcusd (все строчные)
+    return `${base.toLowerCase()}${quote.toLowerCase()}`;
+  }
+  if (exchange === 'gemini') {
+    // Gemini использует формат btcusd (все строчные)
+    return `${base.toLowerCase()}${quote.toLowerCase()}`;
+  }
+  if (exchange === 'bitget') {
+    // Bitget использует формат BTCUSDT
+    return `${base.toUpperCase()}${quote.toUpperCase()}`;
+  }
+  if (exchange === 'mexc') {
+    // MEXC использует формат BTCUSDT
+    return `${base.toUpperCase()}${quote.toUpperCase()}`;
+  }
   return symbol;
 }
 
@@ -213,9 +355,18 @@ function normalizeSymbol(symbol, exchange) {
 async function getBinancePrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'binance');
-    const response = await axiosInstance.get(`${EXCHANGES.binance.tickerUrl}?symbol=${normalized}`);
-    return parseFloat(response.data.price);
+    if (!normalized) return null;
+    
+    const response = await axiosInstance.get(`${EXCHANGES.binance.tickerUrl}?symbol=${normalized}`, {
+      timeout: 5000
+    });
+    
+    if (response.data && response.data.price) {
+      return parseFloat(response.data.price);
+    }
+    return null;
   } catch (error) {
+    // Тихая обработка ошибок - не логируем, чтобы не засорять консоль
     return null;
   }
 }
@@ -223,8 +374,16 @@ async function getBinancePrice(symbol) {
 async function getCoinbasePrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'coinbase');
-    const response = await axiosInstance.get(`${EXCHANGES.coinbase.tickerUrl}/${normalized}/ticker`);
-    return parseFloat(response.data.price);
+    if (!normalized) return null;
+    
+    const response = await axiosInstance.get(`${EXCHANGES.coinbase.tickerUrl}/${normalized}/ticker`, {
+      timeout: 5000
+    });
+    
+    if (response.data && response.data.price) {
+      return parseFloat(response.data.price);
+    }
+    return null;
   } catch (error) {
     return null;
   }
@@ -233,10 +392,17 @@ async function getCoinbasePrice(symbol) {
 async function getKrakenPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'kraken');
-    const response = await axiosInstance.get(`${EXCHANGES.kraken.tickerUrl}?pair=${normalized}`);
-    const pairKey = Object.keys(response.data.result)[0];
-    if (pairKey && response.data.result[pairKey].c) {
-      return parseFloat(response.data.result[pairKey].c[0]);
+    if (!normalized) return null;
+    
+    const response = await axiosInstance.get(`${EXCHANGES.kraken.tickerUrl}?pair=${normalized}`, {
+      timeout: 5000
+    });
+    
+    if (response.data && response.data.result) {
+      const pairKey = Object.keys(response.data.result)[0];
+      if (pairKey && response.data.result[pairKey] && response.data.result[pairKey].c) {
+        return parseFloat(response.data.result[pairKey].c[0]);
+      }
     }
     return null;
   } catch (error) {
@@ -247,10 +413,17 @@ async function getKrakenPrice(symbol) {
 async function getKuCoinPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'kucoin');
-    const response = await axiosInstance.get(EXCHANGES.kucoin.tickerUrl);
-    const ticker = response.data.data.ticker.find(t => t.symbol === normalized);
-    if (ticker && ticker.last) {
-      return parseFloat(ticker.last);
+    if (!normalized) return null;
+    
+    const response = await axiosInstance.get(EXCHANGES.kucoin.tickerUrl, {
+      timeout: 5000
+    });
+    
+    if (response.data && response.data.data && response.data.data.ticker) {
+      const ticker = response.data.data.ticker.find(t => t.symbol === normalized);
+      if (ticker && ticker.last) {
+        return parseFloat(ticker.last);
+      }
     }
     return null;
   } catch (error) {
@@ -261,9 +434,25 @@ async function getKuCoinPrice(symbol) {
 async function getBybitPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'bybit');
-    const response = await axiosInstance.get(`${EXCHANGES.bybit.tickerUrl}?symbol=${normalized}`);
-    if (response.data.result && response.data.result.length > 0) {
-      return parseFloat(response.data.result[0].last_price);
+    if (!normalized) return null;
+    
+    const response = await axiosInstance.get(`${EXCHANGES.bybit.tickerUrl}?category=spot&symbol=${normalized}`, {
+      timeout: 5000
+    });
+    
+    // Проверяем новый формат API v5
+    if (response.data && response.data.result && response.data.result.list && Array.isArray(response.data.result.list) && response.data.result.list.length > 0) {
+      const price = response.data.result.list[0].lastPrice;
+      if (price) {
+        return parseFloat(price);
+      }
+    }
+    // Fallback на старый формат v2
+    if (response.data && response.data.result && Array.isArray(response.data.result) && response.data.result.length > 0) {
+      const price = response.data.result[0].last_price;
+      if (price) {
+        return parseFloat(price);
+      }
     }
     return null;
   } catch (error) {
@@ -274,9 +463,17 @@ async function getBybitPrice(symbol) {
 async function getOKXPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'okx');
-    const response = await axiosInstance.get(`${EXCHANGES.okx.tickerUrl}?instId=${normalized}`);
-    if (response.data.data && response.data.data.length > 0) {
-      return parseFloat(response.data.data[0].last);
+    if (!normalized) return null;
+    
+    const response = await axiosInstance.get(`${EXCHANGES.okx.tickerUrl}?instId=${normalized}`, {
+      timeout: 5000
+    });
+    
+    if (response.data && response.data.data && Array.isArray(response.data.data) && response.data.data.length > 0) {
+      const price = response.data.data[0].last;
+      if (price) {
+        return parseFloat(price);
+      }
     }
     return null;
   } catch (error) {
@@ -287,8 +484,13 @@ async function getOKXPrice(symbol) {
 async function getGateIOPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'gateio');
-    const response = await axiosInstance.get(`${EXCHANGES.gateio.tickerUrl}?currency_pair=${normalized}`);
-    if (response.data && response.data.length > 0 && response.data[0].last) {
+    if (!normalized) return null;
+    
+    const response = await axiosInstance.get(`${EXCHANGES.gateio.tickerUrl}?currency_pair=${normalized}`, {
+      timeout: 5000
+    });
+    
+    if (response.data && Array.isArray(response.data) && response.data.length > 0 && response.data[0].last) {
       return parseFloat(response.data[0].last);
     }
     return null;
@@ -300,7 +502,12 @@ async function getGateIOPrice(symbol) {
 async function getHuobiPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'huobi');
-    const response = await axiosInstance.get(`${EXCHANGES.huobi.tickerUrl}?symbol=${normalized}`);
+    if (!normalized) return null;
+    
+    const response = await axiosInstance.get(`${EXCHANGES.huobi.tickerUrl}?symbol=${normalized}`, {
+      timeout: 5000
+    });
+    
     if (response.data && response.data.tick && response.data.tick.close) {
       return parseFloat(response.data.tick.close);
     }
@@ -313,9 +520,17 @@ async function getHuobiPrice(symbol) {
 async function getBitfinexPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'bitfinex');
-    const response = await axiosInstance.get(`${EXCHANGES.bitfinex.tickerUrl}/${normalized}`);
+    if (!normalized) return null;
+    
+    const response = await axiosInstance.get(`${EXCHANGES.bitfinex.tickerUrl}/${normalized}`, {
+      timeout: 5000
+    });
+    
     if (response.data && Array.isArray(response.data) && response.data.length > 6) {
-      return parseFloat(response.data[6]);
+      const price = response.data[6];
+      if (price) {
+        return parseFloat(price);
+      }
     }
     return null;
   } catch (error) {
@@ -326,7 +541,12 @@ async function getBitfinexPrice(symbol) {
 async function getBitstampPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'bitstamp');
-    const response = await axiosInstance.get(`${EXCHANGES.bitstamp.tickerUrl}/${normalized}`);
+    if (!normalized) return null;
+    
+    const response = await axiosInstance.get(`${EXCHANGES.bitstamp.tickerUrl}/${normalized}`, {
+      timeout: 5000
+    });
+    
     if (response.data && response.data.last) {
       return parseFloat(response.data.last);
     }
@@ -339,7 +559,12 @@ async function getBitstampPrice(symbol) {
 async function getGeminiPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'gemini');
-    const response = await axiosInstance.get(`${EXCHANGES.gemini.tickerUrl}/${normalized}`);
+    if (!normalized) return null;
+    
+    const response = await axiosInstance.get(`${EXCHANGES.gemini.tickerUrl}/${normalized}`, {
+      timeout: 5000
+    });
+    
     if (response.data && response.data.last) {
       return parseFloat(response.data.last);
     }
@@ -352,7 +577,12 @@ async function getGeminiPrice(symbol) {
 async function getBitgetPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'bitget');
-    const response = await axiosInstance.get(`${EXCHANGES.bitget.tickerUrl}?symbol=${normalized}`);
+    if (!normalized) return null;
+    
+    const response = await axiosInstance.get(`${EXCHANGES.bitget.tickerUrl}?symbol=${normalized}`, {
+      timeout: 5000
+    });
+    
     if (response.data && response.data.data && response.data.data.close) {
       return parseFloat(response.data.data.close);
     }
@@ -365,8 +595,16 @@ async function getBitgetPrice(symbol) {
 async function getMEXCPrice(symbol) {
   try {
     const normalized = normalizeSymbol(symbol, 'mexc');
-    const response = await axiosInstance.get(`${EXCHANGES.mexc.tickerUrl}?symbol=${normalized}`);
-    return parseFloat(response.data.price);
+    if (!normalized) return null;
+    
+    const response = await axiosInstance.get(`${EXCHANGES.mexc.tickerUrl}?symbol=${normalized}`, {
+      timeout: 5000
+    });
+    
+    if (response.data && response.data.price) {
+      return parseFloat(response.data.price);
+    }
+    return null;
   } catch (error) {
     return null;
   }
@@ -420,24 +658,57 @@ function calculateArbitrageOpportunities(prices, symbol) {
     for (let j = i + 1; j < exchanges.length; j++) {
       const exchange1 = exchanges[i];
       const exchange2 = exchanges[j];
-      const price1 = prices[exchange1];
-      const price2 = prices[exchange2];
+      const price1 = parseFloat(prices[exchange1]);
+      const price2 = parseFloat(prices[exchange2]);
       
-      if (!price1 || !price2) continue;
+      // Проверяем валидность цен
+      if (!price1 || !price2 || isNaN(price1) || isNaN(price2) || price1 <= 0 || price2 <= 0) continue;
       
-      const diff = Math.abs(price1 - price2);
-      const avgPrice = (price1 + price2) / 2;
-      const profitPercent = (diff / avgPrice) * 100;
+      // Определяем где покупать (дешевле) и где продавать (дороже)
+      const buyPrice = Math.min(price1, price2);
+      const sellPrice = Math.max(price1, price2);
+      const buyExchange = price1 < price2 ? exchange1 : exchange2;
+      const sellExchange = price1 < price2 ? exchange2 : exchange1;
       
-      if (profitPercent > 0.1) {
+      // Рассчитываем теоретическую прибыль (без учета комиссий)
+      const theoreticalProfit = sellPrice - buyPrice;
+      const theoreticalProfitPercent = (theoreticalProfit / buyPrice) * 100;
+      
+      // Рассчитываем реальную прибыль с учетом комиссий бирж
+      const buyFee = EXCHANGE_FEES[buyExchange]?.taker || 0.002; // Используем taker fee
+      const sellFee = EXCHANGE_FEES[sellExchange]?.taker || 0.002;
+      
+      // Реальная цена покупки с комиссией
+      const realBuyPrice = buyPrice * (1 + buyFee);
+      // Реальная цена продажи с комиссией
+      const realSellPrice = sellPrice * (1 - sellFee);
+      
+      // Реальная прибыль
+      const realProfit = realSellPrice - realBuyPrice;
+      const realProfitPercent = (realProfit / realBuyPrice) * 100;
+      
+      // Проверяем минимальный порог прибыли (используем реальную прибыль)
+      if (realProfitPercent > 0.1 && realProfit > 0) {
         opportunities.push({
           symbol,
-          buyExchange: price1 < price2 ? exchange1 : exchange2,
-          sellExchange: price1 < price2 ? exchange2 : exchange1,
-          buyPrice: price1 < price2 ? price1 : price2,
-          sellPrice: price1 < price2 ? price2 : price1,
-          profit: diff,
-          profitPercent: parseFloat(profitPercent.toFixed(2)),
+          buyExchange,
+          sellExchange,
+          // Теоретические значения
+          buyPrice: buyPrice,
+          sellPrice: sellPrice,
+          theoreticalProfit: theoreticalProfit,
+          theoreticalProfitPercent: theoreticalProfitPercent,
+          // Реальные значения с учетом комиссий
+          realBuyPrice: realBuyPrice,
+          realSellPrice: realSellPrice,
+          realProfit: realProfit,
+          realProfitPercent: realProfitPercent,
+          // Комиссии
+          buyFee: buyFee * 100, // В процентах
+          sellFee: sellFee * 100,
+          // Для обратной совместимости
+          profit: realProfit,
+          profitPercent: realProfitPercent,
           timestamp: new Date().toISOString()
         });
       }
@@ -447,8 +718,33 @@ function calculateArbitrageOpportunities(prices, symbol) {
   return opportunities.sort((a, b) => b.profitPercent - a.profitPercent);
 }
 
-// API endpoints
-app.get('/api/arbitrage', async (req, res) => {
+// Middleware для обработки ошибок валидации
+const handleValidationErrors = (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      error: 'Некорректные параметры запроса',
+      details: errors.array()
+    });
+  }
+  next();
+};
+
+// API endpoints с валидацией
+app.get('/api/arbitrage', 
+  [
+    query('limit')
+      .optional()
+      .isInt({ min: 1, max: 500 })
+      .withMessage('Лимит должен быть числом от 1 до 500'),
+    query('_t')
+      .optional()
+      .isNumeric()
+      .withMessage('Timestamp должен быть числом')
+  ],
+  handleValidationErrors,
+  async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 100;
     const cacheKey = `arbitrage_${limit}`;
@@ -488,14 +784,29 @@ app.get('/api/arbitrage', async (req, res) => {
     
     res.json(result);
   } catch (error) {
+    const errorMessage = process.env.NODE_ENV === 'production' 
+      ? 'Внутренняя ошибка сервера' 
+      : error.message;
+    
     res.status(500).json({
       success: false,
-      error: error.message
+      error: errorMessage
     });
   }
 });
 
-app.get('/api/prices/:symbol', async (req, res) => {
+app.get('/api/prices/:symbol',
+  [
+    param('symbol')
+      .notEmpty()
+      .withMessage('Символ не может быть пустым')
+      .matches(/^[A-Z0-9]+(-[A-Z0-9]+)?$/i)
+      .withMessage('Некорректный формат символа')
+      .isLength({ min: 2, max: 20 })
+      .withMessage('Символ должен быть от 2 до 20 символов')
+  ],
+  handleValidationErrors,
+  async (req, res) => {
   try {
     const symbol = req.params.symbol.replace('-', '/');
     const prices = await getAllPrices(symbol, false);
@@ -507,14 +818,26 @@ app.get('/api/prices/:symbol', async (req, res) => {
       timestamp: new Date().toISOString()
     });
   } catch (error) {
+    const errorMessage = process.env.NODE_ENV === 'production' 
+      ? 'Внутренняя ошибка сервера' 
+      : error.message;
+    
     res.status(500).json({
       success: false,
-      error: error.message
+      error: errorMessage
     });
   }
 });
 
-app.get('/api/prices', async (req, res) => {
+app.get('/api/prices',
+  [
+    query('limit')
+      .optional()
+      .isInt({ min: 1, max: 200 })
+      .withMessage('Лимит должен быть числом от 1 до 200')
+  ],
+  handleValidationErrors,
+  async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 50;
     const allPrices = {};
@@ -550,23 +873,85 @@ app.get('/api/prices', async (req, res) => {
 });
 
 app.get('/api/pairs', (req, res) => {
-  res.json({
-    success: true,
-    pairs: TRADING_PAIRS,
-    total: TRADING_PAIRS.length
-  });
+  try {
+    res.json({
+      success: true,
+      pairs: TRADING_PAIRS,
+      total: TRADING_PAIRS.length
+    });
+  } catch (error) {
+    const errorMessage = process.env.NODE_ENV === 'production' 
+      ? 'Внутренняя ошибка сервера' 
+      : error.message;
+    
+    res.status(500).json({
+      success: false,
+      error: errorMessage
+    });
+  }
 });
 
 app.get('/api/exchanges', (req, res) => {
-  const exchangesList = Object.keys(EXCHANGES).map(key => ({
-    id: key,
-    name: EXCHANGES[key].name
-  }));
+  try {
+    const exchangesList = Object.keys(EXCHANGES).map(key => ({
+      id: key,
+      name: EXCHANGES[key].name
+    }));
+    
+    res.json({
+      success: true,
+      exchanges: exchangesList,
+      total: exchangesList.length
+    });
+  } catch (error) {
+    const errorMessage = process.env.NODE_ENV === 'production' 
+      ? 'Внутренняя ошибка сервера' 
+      : error.message;
+    
+    res.status(500).json({
+      success: false,
+      error: errorMessage
+    });
+  }
+});
+
+// Общий обработчик ошибок
+app.use((err, req, res, next) => {
+  // Обработка ошибок CORS
+  if (err.message === 'Not allowed by CORS') {
+    return res.status(403).json({
+      success: false,
+      error: 'Доступ запрещен'
+    });
+  }
   
-  res.json({
-    success: true,
-    exchanges: exchangesList,
-    total: exchangesList.length
+  // Обработка ошибок валидации
+  if (err.name === 'ValidationError') {
+    return res.status(400).json({
+      success: false,
+      error: 'Ошибка валидации данных',
+      details: err.message
+    });
+  }
+  
+  // Общая обработка ошибок
+  const errorMessage = process.env.NODE_ENV === 'production' 
+    ? 'Внутренняя ошибка сервера' 
+    : err.message;
+  
+  console.error('Ошибка:', err);
+  
+  res.status(err.status || 500).json({
+    success: false,
+    error: errorMessage
+  });
+});
+
+// Обработка 404
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error: 'Эндпоинт не найден'
   });
 });
 
