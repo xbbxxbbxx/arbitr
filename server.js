@@ -113,8 +113,16 @@ const EXCHANGE_FEES = {
   bitfinex: { maker: 0.001, taker: 0.002 },    // 0.1%/0.2%
   bitstamp: { maker: 0.005, taker: 0.005 },    // 0.5%
   gemini: { maker: 0.0025, taker: 0.0035 },    // 0.25%/0.35%
-  bitget: { maker: 0.001, taker: 0.001 },     // 0.1%
-  mexc: { maker: 0.002, taker: 0.002 }         // 0.2%
+  bitget: { maker: 0.001, taker: 0.001 },      // 0.1%
+  mexc: { maker: 0.002, taker: 0.002 },        // 0.2%
+  bitmart: { maker: 0.0025, taker: 0.0025 },   // 0.25%
+  whitebit: { maker: 0.001, taker: 0.001 },    // 0.1%
+  p2pb2b: { maker: 0.002, taker: 0.002 },      // 0.2%
+  cryptocom: { maker: 0.004, taker: 0.004 },   // 0.4%
+  poloniex: { maker: 0.0015, taker: 0.0015 },  // 0.15%
+  bittrex: { maker: 0.0025, taker: 0.0025 },   // 0.25%
+  telegramwallet: { maker: 0.0, taker: 0.0 },  // 0% (P2P)
+  telegramcryptobot: { maker: 0.0, taker: 0.0 } // 0% (P2P)
 };
 
 // Расширенный список бирж
@@ -170,6 +178,38 @@ const EXCHANGES = {
   mexc: {
     name: 'MEXC',
     tickerUrl: 'https://api.mexc.com/api/v3/ticker/price'
+  },
+  bitmart: {
+    name: 'BitMart',
+    tickerUrl: 'https://api-cloud.bitmart.com/spot/v1/ticker'
+  },
+  whitebit: {
+    name: 'WhiteBIT',
+    tickerUrl: 'https://whitebit.com/api/v4/public/ticker'
+  },
+  p2pb2b: {
+    name: 'P2PB2B',
+    tickerUrl: 'https://api.p2pb2b.io/api/v2/public/ticker'
+  },
+  cryptocom: {
+    name: 'Crypto.com',
+    tickerUrl: 'https://api.crypto.com/v2/public/get-ticker'
+  },
+  poloniex: {
+    name: 'Poloniex',
+    tickerUrl: 'https://api.poloniex.com/markets/ticker24h'
+  },
+  bittrex: {
+    name: 'Bittrex',
+    tickerUrl: 'https://api.bittrex.com/v3/markets/tickers'
+  },
+  telegramwallet: {
+    name: 'Telegram Wallet',
+    tickerUrl: 'https://api.coingecko.com/api/v3/simple/price' // Используем CoinGecko как источник для Telegram Wallet
+  },
+  telegramcryptobot: {
+    name: 'Telegram CryptoBot',
+    tickerUrl: 'https://api.coingecko.com/api/v3/simple/price' // Используем CoinGecko как источник для Telegram CryptoBot
   }
 };
 
@@ -349,6 +389,34 @@ function normalizeSymbol(symbol, exchange) {
     // MEXC использует формат BTCUSDT
     return `${base.toUpperCase()}${quote.toUpperCase()}`;
   }
+  if (exchange === 'bitmart') {
+    // BitMart использует формат BTC_USDT
+    return `${base.toUpperCase()}_${quote.toUpperCase()}`;
+  }
+  if (exchange === 'whitebit') {
+    // WhiteBIT использует формат BTC_USDT
+    return `${base.toUpperCase()}_${quote.toUpperCase()}`;
+  }
+  if (exchange === 'p2pb2b') {
+    // P2PB2B использует формат BTC_USDT
+    return `${base.toUpperCase()}_${quote.toUpperCase()}`;
+  }
+  if (exchange === 'cryptocom') {
+    // Crypto.com использует формат BTC_USDT
+    return `${base.toUpperCase()}_${quote.toUpperCase()}`;
+  }
+  if (exchange === 'poloniex') {
+    // Poloniex использует формат BTC_USDT
+    return `${base.toUpperCase()}_${quote.toUpperCase()}`;
+  }
+  if (exchange === 'bittrex') {
+    // Bittrex использует формат BTC-USDT
+    return `${base.toUpperCase()}-${quote.toUpperCase()}`;
+  }
+  if (exchange === 'telegramwallet' || exchange === 'telegramcryptobot') {
+    // Для Telegram используем формат для CoinGecko API
+    return base.toLowerCase();
+  }
   return symbol;
 }
 
@@ -361,33 +429,45 @@ async function getBinancePrice(symbol) {
       return null;
     }
     
-    // Используем более надежный endpoint с лучшей обработкой ошибок
-    const url = `${EXCHANGES.binance.tickerUrl}?symbol=${normalized}`;
-    const response = await axiosInstance.get(url, {
-      timeout: 8000,
-      headers: {
-        'Accept': 'application/json',
-        'X-MBX-APIKEY': '' // Пустой ключ для публичного API
-      }
-    });
-    
-    // Binance возвращает объект с полем price
-    if (response.data && response.data.price) {
-      const price = parseFloat(response.data.price);
-      if (!isNaN(price) && price > 0) {
-        return price;
-      }
-    }
-    
-    // Альтернативный формат (массив) - для batch запросов
-    if (Array.isArray(response.data) && response.data.length > 0) {
-      const ticker = response.data.find(t => t.symbol === normalized);
-      if (ticker && ticker.price) {
-        const price = parseFloat(ticker.price);
+    // Используем альтернативный endpoint - /api/v3/ticker/24hr для лучшей совместимости
+    try {
+      const url = `https://api.binance.com/api/v3/ticker/24hr?symbol=${normalized}`;
+      const response = await axiosInstance.get(url, {
+        timeout: 10000,
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+      
+      // Binance возвращает объект с полем lastPrice
+      if (response.data && response.data.lastPrice) {
+        const price = parseFloat(response.data.lastPrice);
         if (!isNaN(price) && price > 0) {
           return price;
         }
       }
+    } catch (err) {
+      // Fallback на оригинальный endpoint
+    }
+    
+    // Fallback на оригинальный endpoint
+    try {
+      const url = `${EXCHANGES.binance.tickerUrl}?symbol=${normalized}`;
+      const response = await axiosInstance.get(url, {
+        timeout: 5000,
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (response.data && response.data.price) {
+        const price = parseFloat(response.data.price);
+        if (!isNaN(price) && price > 0) {
+          return price;
+        }
+      }
+    } catch (err) {
+      // Игнорируем ошибку
     }
     
     return null;
@@ -522,9 +602,16 @@ async function getBybitPrice(symbol) {
             }
           }
         }
-        // Прямой формат v5 (без list) - когда возвращается один объект
+        // Прямой формат v5 (без list)
         if (response.data.result.lastPrice) {
           const parsedPrice = parseFloat(response.data.result.lastPrice);
+          if (!isNaN(parsedPrice) && parsedPrice > 0) {
+            return parsedPrice;
+          }
+        }
+        // Альтернативное поле last
+        if (response.data.result.last) {
+          const parsedPrice = parseFloat(response.data.result.last);
           if (!isNaN(parsedPrice) && parsedPrice > 0) {
             return parsedPrice;
           }
@@ -710,6 +797,185 @@ async function getMEXCPrice(symbol) {
   }
 }
 
+async function getBitMartPrice(symbol) {
+  try {
+    const normalized = normalizeSymbol(symbol, 'bitmart');
+    if (!normalized) return null;
+    
+    const response = await axiosInstance.get(`${EXCHANGES.bitmart.tickerUrl}?symbol=${normalized}`, {
+      timeout: 5000
+    });
+    
+    if (response.data && response.data.data && response.data.data.tickers) {
+      const ticker = response.data.data.tickers.find(t => t.symbol === normalized);
+      if (ticker && ticker.last_price) {
+        return parseFloat(ticker.last_price);
+      }
+    }
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function getWhiteBITPrice(symbol) {
+  try {
+    const normalized = normalizeSymbol(symbol, 'whitebit');
+    if (!normalized) return null;
+    
+    const response = await axiosInstance.get(`${EXCHANGES.whitebit.tickerUrl}?market=${normalized}`, {
+      timeout: 5000
+    });
+    
+    if (response.data && response.data.result) {
+      const price = response.data.result.last_price || response.data.result.last;
+      if (price) {
+        return parseFloat(price);
+      }
+    }
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function getP2PB2BPrice(symbol) {
+  try {
+    const normalized = normalizeSymbol(symbol, 'p2pb2b');
+    if (!normalized) return null;
+    
+    const response = await axiosInstance.get(`${EXCHANGES.p2pb2b.tickerUrl}?market=${normalized}`, {
+      timeout: 5000
+    });
+    
+    if (response.data && response.data.result) {
+      const price = response.data.result.last || response.data.result.last_price;
+      if (price) {
+        return parseFloat(price);
+      }
+    }
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function getCryptoComPrice(symbol) {
+  try {
+    const normalized = normalizeSymbol(symbol, 'cryptocom');
+    if (!normalized) return null;
+    
+    const response = await axiosInstance.get(`${EXCHANGES.cryptocom.tickerUrl}?instrument_name=${normalized}`, {
+      timeout: 5000
+    });
+    
+    if (response.data && response.data.result && response.data.result.data) {
+      const ticker = response.data.result.data;
+      const price = ticker.a || ticker.last_price;
+      if (price) {
+        return parseFloat(price);
+      }
+    }
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function getPoloniexPrice(symbol) {
+  try {
+    const normalized = normalizeSymbol(symbol, 'poloniex');
+    if (!normalized) return null;
+    
+    const response = await axiosInstance.get(`${EXCHANGES.poloniex.tickerUrl}`, {
+      timeout: 5000
+    });
+    
+    if (response.data && Array.isArray(response.data)) {
+      const ticker = response.data.find(t => t.symbol === normalized);
+      if (ticker && ticker.close) {
+        return parseFloat(ticker.close);
+      }
+    }
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function getBittrexPrice(symbol) {
+  try {
+    const normalized = normalizeSymbol(symbol, 'bittrex');
+    if (!normalized) return null;
+    
+    const response = await axiosInstance.get(`${EXCHANGES.bittrex.tickerUrl}/${normalized}`, {
+      timeout: 5000
+    });
+    
+    if (response.data && response.data.lastTradeRate) {
+      return parseFloat(response.data.lastTradeRate);
+    }
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function getTelegramWalletPrice(symbol) {
+  try {
+    // Используем CoinGecko API для получения цен (Telegram Wallet использует рыночные курсы)
+    const coinId = symbol.split('/')[0].toLowerCase();
+    const quoteCurrency = symbol.split('/')[1]?.toLowerCase() || 'usd';
+    
+    // Маппинг популярных монет для CoinGecko
+    const coinMapping = {
+      'btc': 'bitcoin',
+      'eth': 'ethereum',
+      'usdt': 'tether',
+      'bnb': 'binancecoin',
+      'sol': 'solana',
+      'xrp': 'ripple',
+      'ada': 'cardano',
+      'doge': 'dogecoin',
+      'dot': 'polkadot',
+      'matic': 'matic-network',
+      'avax': 'avalanche-2',
+      'link': 'chainlink',
+      'ltc': 'litecoin',
+      'bch': 'bitcoin-cash',
+      'xlm': 'stellar',
+      'atom': 'cosmos',
+      'etc': 'ethereum-classic',
+      'xmr': 'monero',
+      'trx': 'tron'
+    };
+    
+    const geckoId = coinMapping[coinId] || coinId;
+    const response = await axiosInstance.get(`${EXCHANGES.telegramwallet.tickerUrl}`, {
+      params: {
+        ids: geckoId,
+        vs_currencies: quoteCurrency === 'usdt' ? 'usd' : quoteCurrency
+      },
+      timeout: 5000
+    });
+    
+    if (response.data && response.data[geckoId]) {
+      const price = response.data[geckoId][quoteCurrency === 'usdt' ? 'usd' : quoteCurrency];
+      if (price) {
+        return parseFloat(price);
+      }
+    }
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function getTelegramCryptoBotPrice(symbol) {
+  // Telegram CryptoBot использует те же курсы, что и Telegram Wallet
+  return getTelegramWalletPrice(symbol);
+}
+
 // Получение всех цен с кэшированием
 async function getAllPrices(symbol, useCache = true) {
   const cacheKey = `price_${symbol}`;
@@ -734,7 +1000,15 @@ async function getAllPrices(symbol, useCache = true) {
     getBitstampPrice(symbol).then(price => price && (prices.bitstamp = price)),
     getGeminiPrice(symbol).then(price => price && (prices.gemini = price)),
     getBitgetPrice(symbol).then(price => price && (prices.bitget = price)),
-    getMEXCPrice(symbol).then(price => price && (prices.mexc = price))
+    getMEXCPrice(symbol).then(price => price && (prices.mexc = price)),
+    getBitMartPrice(symbol).then(price => price && (prices.bitmart = price)),
+    getWhiteBITPrice(symbol).then(price => price && (prices.whitebit = price)),
+    getP2PB2BPrice(symbol).then(price => price && (prices.p2pb2b = price)),
+    getCryptoComPrice(symbol).then(price => price && (prices.cryptocom = price)),
+    getPoloniexPrice(symbol).then(price => price && (prices.poloniex = price)),
+    getBittrexPrice(symbol).then(price => price && (prices.bittrex = price)),
+    getTelegramWalletPrice(symbol).then(price => price && (prices.telegramwallet = price)),
+    getTelegramCryptoBotPrice(symbol).then(price => price && (prices.telegramcryptobot = price))
   ];
 
   await Promise.allSettled(pricePromises);

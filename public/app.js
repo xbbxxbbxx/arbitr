@@ -23,7 +23,7 @@ let customProfitRange = {
 // Переводы
 const translations = {
   ru: {
-    'app.title': 'Крипто Арбитраж',
+    'app.title': 'UNKNOWN P2P',
     'app.tagline': 'Межбиржевая торговля',
     'filters.profit': 'Фильтр по прибыли:',
     'filters.all': 'Все',
@@ -42,7 +42,7 @@ const translations = {
     'button.notifications': 'Уведомления'
   },
   ua: {
-    'app.title': 'Крипто Арбітраж',
+    'app.title': 'UNKNOWN P2P',
     'app.tagline': 'Міжбіржова торгівля',
     'filters.profit': 'Фільтр за прибутком:',
     'filters.all': 'Всі',
@@ -61,7 +61,7 @@ const translations = {
     'button.notifications': 'Сповіщення'
   },
   en: {
-    'app.title': 'Crypto Arbitrage',
+    'app.title': 'UNKNOWN P2P',
     'app.tagline': 'Cross-exchange Trading',
     'filters.profit': 'Profit Filter:',
     'filters.all': 'All',
@@ -713,7 +713,7 @@ function updatePricesTable(prices) {
     const tbody = pricesTable.querySelector('tbody');
     if (!tbody) return; // Если tbody не найден, выходим
     
-    const exchanges = ['binance', 'coinbase', 'kraken', 'kucoin', 'bybit', 'okx', 'gateio', 'huobi', 'bitfinex', 'bitstamp', 'gemini', 'bitget', 'mexc'];
+    const exchanges = ['binance', 'coinbase', 'kraken', 'kucoin', 'bybit', 'okx', 'gateio', 'huobi', 'bitfinex', 'bitstamp', 'gemini', 'bitget', 'mexc', 'bitmart', 'whitebit', 'p2pb2b', 'cryptocom', 'poloniex', 'bittrex', 'telegramwallet', 'telegramcryptobot'];
     
     if (!tbody.querySelector('tr') || tbody.querySelector('tr').textContent.includes('Загрузка')) {
         tbody.innerHTML = Object.entries(prices).map(([pair, pairPrices]) => {
@@ -795,12 +795,14 @@ function calculateArbitrageForPair(prices) {
 function updatePricesCards(prices) {
     if (!pricesCards) return;
     
-    const exchanges = ['binance', 'coinbase', 'kraken', 'kucoin', 'bybit', 'okx', 'gateio', 'huobi', 'bitfinex', 'bitstamp', 'gemini', 'bitget', 'mexc'];
+    const exchanges = ['binance', 'coinbase', 'kraken', 'kucoin', 'bybit', 'okx', 'gateio', 'huobi', 'bitfinex', 'bitstamp', 'gemini', 'bitget', 'mexc', 'bitmart', 'whitebit', 'p2pb2b', 'cryptocom', 'poloniex', 'bittrex', 'telegramwallet', 'telegramcryptobot'];
     const exchangeNames = {
         binance: 'Binance', coinbase: 'Coinbase', kraken: 'Kraken', kucoin: 'KuCoin',
         bybit: 'Bybit', okx: 'OKX', gateio: 'Gate.io', huobi: 'Huobi',
         bitfinex: 'Bitfinex', bitstamp: 'Bitstamp', gemini: 'Gemini',
-        bitget: 'Bitget', mexc: 'MEXC'
+        bitget: 'Bitget', mexc: 'MEXC', bitmart: 'BitMart', whitebit: 'WhiteBIT',
+        p2pb2b: 'P2PB2B', cryptocom: 'Crypto.com', poloniex: 'Poloniex', bittrex: 'Bittrex',
+        telegramwallet: 'Telegram Wallet', telegramcryptobot: 'Telegram CryptoBot'
     };
     
     if (!pricesCards.querySelector('.price-card')) {
