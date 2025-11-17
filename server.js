@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const path = require('path');
+const fs = require('fs');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { body, param, query, validationResult } = require('express-validator');
@@ -915,7 +916,46 @@ app.get('/api/exchanges', (req, res) => {
   }
 });
 
-// Общий обработчик ошибок
+// Раздача статических файлов (должно быть ДО обработчика 404)
+const publicPath = path.join(__dirname, 'public');
+
+// Проверка существования директории public
+if (!fs.existsSync(publicPath)) {
+  console.error(`❌ Ошибка: Директория ${publicPath} не найдена!`);
+  console.error('Убедитесь, что папка public существует в корне проекта.');
+} else {
+  console.log(`✅ Статические файлы из: ${publicPath}`);
+}
+
+app.use(express.static(publicPath, {
+  maxAge: '1d',
+  etag: true,
+  index: false // Отключаем автоматический index, используем явный маршрут
+}));
+
+// Явные маршруты для статических файлов (на случай проблем с express.static)
+app.get('/styles.css', (req, res) => {
+  res.sendFile(path.join(publicPath, 'styles.css'), {
+    headers: {
+      'Content-Type': 'text/css'
+    }
+  });
+});
+
+app.get('/app.js', (req, res) => {
+  res.sendFile(path.join(publicPath, 'app.js'), {
+    headers: {
+      'Content-Type': 'application/javascript'
+    }
+  });
+});
+
+// Главная страница (SPA fallback)
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Общий обработчик ошибок (должен быть перед 404)
 app.use((err, req, res, next) => {
   // Обработка ошибок CORS
   if (err.message === 'Not allowed by CORS') {
@@ -947,39 +987,38 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Обработка 404
+// Обработка 404 (должен быть ПОСЛЕДНИМ, после всех маршрутов)
 app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    error: 'Эндпоинт не найден'
-  });
-});
-
-// Раздача статических файлов
-const publicPath = path.join(__dirname, 'public');
-app.use(express.static(publicPath, {
-  maxAge: '1d',
-  etag: true
-}));
-
-app.get('/styles.css', (req, res) => {
-  res.sendFile(path.join(publicPath, 'styles.css'), {
-    headers: {
-      'Content-Type': 'text/css'
-    }
-  });
-});
-
-app.get('/app.js', (req, res) => {
-  res.sendFile(path.join(publicPath, 'app.js'), {
-    headers: {
-      'Content-Type': 'application/javascript'
-    }
-  });
-});
-
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  // Если запрос к API - возвращаем JSON
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({
+      success: false,
+      error: 'Эндпоинт не найден',
+      path: req.path
+    });
+  }
+  
+  // Для всех остальных запросов возвращаем index.html (SPA routing)
+  const indexPath = path.join(__dirname, 'public', 'index.html');
+  
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath, (err) => {
+      if (err) {
+        console.error('Ошибка отправки index.html:', err);
+        res.status(500).json({
+          success: false,
+          error: 'Ошибка загрузки страницы'
+        });
+      }
+    });
+  } else {
+    console.error(`index.html не найден по пути: ${indexPath}`);
+    res.status(500).json({
+      success: false,
+      error: 'Файл index.html не найден',
+      path: indexPath
+    });
+  }
 });
 
 if (require.main === module) {
@@ -987,6 +1026,16 @@ if (require.main === module) {
     console.log(`🚀 Сервер запущен на http://localhost:${PORT}`);
     console.log(`📊 Мониторинг арбитражных возможностей активен`);
     console.log(`📈 Поддерживается ${Object.keys(EXCHANGES).length} бирж и ${TRADING_PAIRS.length} торговых пар`);
+    console.log(`📁 Рабочая директория: ${__dirname}`);
+    console.log(`🌐 Режим: ${process.env.NODE_ENV || 'development'}`);
+    
+    // Проверка доступности основных файлов
+    const indexPath = path.join(__dirname, 'public', 'index.html');
+    if (fs.existsSync(indexPath)) {
+      console.log(`✅ index.html найден`);
+    } else {
+      console.error(`❌ index.html не найден по пути: ${indexPath}`);
+    }
   });
 }
 
