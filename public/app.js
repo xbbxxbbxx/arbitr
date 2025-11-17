@@ -333,19 +333,21 @@ async function loadArbitrageOpportunities(showLoading = true) {
         const data = await response.json();
         
         if (data.success) {
-            // Отслеживаем изменения прибыли
-            const currentOpportunities = new Map();
-            data.opportunities.forEach(opp => {
-                const key = `${opp.symbol}_${opp.buyExchange}_${opp.sellExchange}`;
-                const profit = parseFloat(opp.realProfitPercent) || parseFloat(opp.profitPercent) || 0;
-                currentOpportunities.set(key, profit);
-            });
+            // Сохраняем предыдущие значения перед обновлением
+            const currentPreviousValues = new Map(previousOpportunities);
             
             cachedOpportunities = data.opportunities;
-            displayOpportunities(data.opportunities, previousOpportunities);
+            displayOpportunities(data.opportunities, currentPreviousValues);
             
-            // Сохраняем текущие значения для следующего сравнения
-            previousOpportunities = currentOpportunities;
+            // Обновляем previousOpportunities для следующего сравнения
+            data.opportunities.forEach(opp => {
+                const key = `${opp.symbol}_${opp.buyExchange}_${opp.sellExchange}`;
+                previousOpportunities.set(key, {
+                    profitPercent: parseFloat(opp.realProfitPercent) || parseFloat(opp.profitPercent) || 0,
+                    buyPrice: parseFloat(opp.buyPrice) || 0,
+                    sellPrice: parseFloat(opp.sellPrice) || 0
+                });
+            });
             
             if (opportunitiesCountEl) animateNumber(opportunitiesCountEl, data.opportunities.length);
             if (opportunitiesCountCard) {
@@ -556,16 +558,22 @@ function renderOpportunities(opportunities, previousValues = new Map()) {
             return ''; // Пропускаем некорректные данные
         }
         
-        // Определяем изменение прибыли
+        // Определяем изменение прибыли и цен в реальном времени
         const key = `${opp.symbol}_${opp.buyExchange}_${opp.sellExchange}`;
-        const previousProfit = previousValues.get(key);
+        const previousData = previousValues.get(key);
         let profitChange = null;
         let profitChangeClass = '';
         let profitChangeIcon = '';
+        let priceChangeIndicator = '';
         
-        if (previousProfit !== undefined && previousProfit !== null) {
+        if (previousData) {
+            const previousProfit = previousData.profitPercent || 0;
+            const previousBuyPrice = previousData.buyPrice || 0;
+            const previousSellPrice = previousData.sellPrice || 0;
+            
+            // Изменение прибыли
             const change = realProfitPercent - previousProfit;
-            if (Math.abs(change) > 0.01) { // Изменение больше 0.01%
+            if (Math.abs(change) > 0.001) { // Изменение больше 0.001%
                 profitChange = change;
                 if (change > 0) {
                     profitChangeClass = 'profit-increasing';
@@ -575,7 +583,22 @@ function renderOpportunities(opportunities, previousValues = new Map()) {
                     profitChangeIcon = '📉';
                 }
             }
+            
+            // Изменение цен
+            const buyPriceChange = buyPrice - previousBuyPrice;
+            const sellPriceChange = sellPrice - previousSellPrice;
+            
+            if (Math.abs(buyPriceChange) > 0.0001 || Math.abs(sellPriceChange) > 0.0001) {
+                priceChangeIndicator = '<span class="price-update-indicator" title="Цены обновлены">🔄</span>';
+            }
         }
+        
+        // Сохраняем текущие данные для следующего сравнения
+        previousValues.set(key, {
+            profitPercent: realProfitPercent,
+            buyPrice: buyPrice,
+            sellPrice: sellPrice
+        });
         
         const profitClass = getProfitBadgeClass(realProfitPercent);
         
@@ -601,10 +624,11 @@ function renderOpportunities(opportunities, previousValues = new Map()) {
                         ${profitabilityIndicator}
                     </div>
                     <div class="profit-badges">
-                        <span class="profit-badge ${profitClass} ${profitChangeClass}" title="${t['opportunity.realProfit'] || 'Реальная прибыль с учетом комиссий'}">
+                        <span class="profit-badge ${profitClass} ${profitChangeClass} live-profit" title="${t['opportunity.realProfit'] || 'Реальная прибыль с учетом комиссий - обновляется в реальном времени'}">
                             ${profitChangeIcon}
-                            +${formatPercent(realProfitPercent)}%
-                            ${profitChange !== null ? `<span class="profit-change">${profitChange > 0 ? '+' : ''}${formatPercent(profitChange)}%</span>` : ''}
+                            <span class="profit-value-live">+${formatPercent(realProfitPercent)}%</span>
+                            ${profitChange !== null ? `<span class="profit-change ${profitChange > 0 ? 'increase' : 'decrease'}">${profitChange > 0 ? '+' : ''}${formatPercent(profitChange)}%</span>` : ''}
+                            <span class="live-indicator" title="Обновляется в реальном времени">⚡</span>
                         </span>
                         ${theoreticalProfitPercent > realProfitPercent ? `
                             <span class="profit-badge theoretical" title="${t['opportunity.theoreticalProfit'] || 'Теоретическая прибыль без комиссий'}">
@@ -622,13 +646,13 @@ function renderOpportunities(opportunities, previousValues = new Map()) {
                         <span class="detail-label">${t['opportunity.sell'] || 'Продать на:'}</span>
                         <span class="detail-value">${escapeHtml(opp.sellExchange)}</span>
                     </div>
-                    <div class="opportunity-detail">
+                    <div class="opportunity-detail price-detail">
                         <span class="detail-label">${t['opportunity.buyPrice'] || 'Цена покупки:'}</span>
-                        <span class="detail-value">$${formatPrice(buyPrice)}</span>
+                        <span class="detail-value price-value-live">$${formatPrice(buyPrice)} ${priceChangeIndicator}</span>
                     </div>
-                    <div class="opportunity-detail">
+                    <div class="opportunity-detail price-detail">
                         <span class="detail-label">${t['opportunity.sellPrice'] || 'Цена продажи:'}</span>
-                        <span class="detail-value">$${formatPrice(sellPrice)}</span>
+                        <span class="detail-value price-value-live">$${formatPrice(sellPrice)} ${priceChangeIndicator}</span>
                     </div>
                     <div class="opportunity-detail real-profit">
                         <span class="detail-label">${t['opportunity.realProfit'] || 'Реальная прибыль:'}</span>
@@ -869,15 +893,15 @@ function toggleAutoRefresh() {
             autoRefreshBtn.classList.remove('active');
         }
     } else {
-        // Обновление арбитражных возможностей каждую секунду (реальное время)
+        // Обновление арбитражных возможностей каждые 2 секунды (реальное время)
         autoRefreshInterval = setInterval(() => {
             loadArbitrageOpportunities(false);
-        }, 1000);
+        }, 2000);
         
-        // Обновление цен каждую секунду (синхронно с арбитражем)
+        // Обновление цен каждые 2 секунды (синхронно с арбитражем)
         pricesUpdateInterval = setInterval(() => {
             loadPrices(false);
-        }, 1000);
+        }, 2000);
         
         // Загружаем данные сразу при включении
         loadArbitrageOpportunities(false);
@@ -1152,10 +1176,12 @@ document.addEventListener('DOMContentLoaded', () => {
     loadArbitrageOpportunities();
     loadPrices();
     
-    // Автообновление отключено по умолчанию - пользователь может включить вручную
-    // setTimeout(() => {
-    //     toggleAutoRefresh();
-    // }, 2000);
+    // Автоматически включаем обновление в реальном времени через 1 секунду после загрузки
+    setTimeout(() => {
+        if (!isAutoRefresh) {
+            toggleAutoRefresh();
+        }
+    }, 1000);
     
     if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission();

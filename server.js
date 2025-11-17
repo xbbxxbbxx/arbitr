@@ -79,13 +79,13 @@ app.use(limiter);
 // Применяем строгий лимит к API endpoints
 app.use('/api/', apiLimiter);
 
-// Кэш для цен (TTL: 2 секунды для более частого обновления)
+// Кэш для цен (TTL: 1 секунда для обновления в реальном времени)
 const priceCache = new Map();
-const CACHE_TTL = 2000;
+const CACHE_TTL = 1000;
 
-// Кэш для арбитражных возможностей (TTL: 2 секунды для частого обновления)
+// Кэш для арбитражных возможностей (TTL: 1 секунда для обновления в реальном времени)
 const arbitrageCache = new Map();
-const ARBITRAGE_CACHE_TTL = 2000;
+const ARBITRAGE_CACHE_TTL = 1000;
 
 // HTTP клиент с оптимизацией
 const axiosInstance = axios.create({
