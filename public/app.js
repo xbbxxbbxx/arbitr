@@ -322,7 +322,8 @@ async function loadArbitrageOpportunities(showLoading = true) {
         
         // Добавляем timestamp для предотвращения кэширования браузером
         const timestamp = Date.now();
-        const response = await fetch(`${API_BASE}/arbitrage?limit=100&_t=${timestamp}`, {
+        // Увеличен лимит для получения больше возможностей
+        const response = await fetch(`${API_BASE}/arbitrage?limit=500&_t=${timestamp}`, {
             cache: 'no-cache',
             headers: { 
                 'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -689,7 +690,8 @@ async function loadPrices(showLoading = true) {
             if (pricesCards) pricesCards.innerHTML = '<div class="loading">Загрузка данных...</div>';
         }
         
-        const response = await fetch(`${API_BASE}/prices?limit=50`, {
+        // Увеличен лимит для получения больше цен
+        const response = await fetch(`${API_BASE}/prices?limit=200`, {
             cache: 'no-cache',
             headers: { 'Cache-Control': 'no-cache' }
         });

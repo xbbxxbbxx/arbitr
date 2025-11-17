@@ -317,7 +317,85 @@ const TRADING_PAIRS = [
   'HBAR/USDT', 'HBAR/BTC', 'HBAR/USD', 'HBAR/ETH',
   'QNT/USDT', 'QNT/BTC', 'QNT/USD', 'QNT/ETH',
   'EOS/USDT', 'EOS/BTC', 'EOS/USD', 'EOS/ETH',
-  'FLOW/USDT', 'FLOW/BTC', 'FLOW/USD', 'FLOW/ETH'
+  'FLOW/USDT', 'FLOW/BTC', 'FLOW/USD', 'FLOW/ETH',
+  // Дополнительные популярные монеты для большего покрытия
+  'TON/USDT', 'TON/BTC', 'TON/USD', 'TON/ETH',
+  'XMR/USDT', 'XMR/BTC', 'XMR/USD', 'XMR/ETH',
+  'FET/USDT', 'FET/BTC', 'FET/USD', 'FET/ETH',
+  'AGIX/USDT', 'AGIX/BTC', 'AGIX/USD', 'AGIX/ETH',
+  'OCEAN/USDT', 'OCEAN/BTC', 'OCEAN/USD', 'OCEAN/ETH',
+  // Стабильные монеты для арбитража
+  'USDC/USDT', 'USDC/USD', 'USDC/EUR',
+  'BUSD/USDT', 'BUSD/USD', 'BUSD/EUR',
+  'DAI/USDT', 'DAI/USD', 'DAI/EUR',
+  'TUSD/USDT', 'TUSD/USD',
+  'USDP/USDT', 'USDP/USD',
+  // Новые популярные токены
+  'ORDI/USDT', 'ORDI/BTC', 'ORDI/USD',
+  'SATS/USDT', 'SATS/BTC', 'SATS/USD',
+  '1000SATS/USDT', '1000SATS/BTC',
+  'WIF/USDT', 'WIF/BTC', 'WIF/USD',
+  'POPCAT/USDT', 'POPCAT/BTC',
+  'MYRO/USDT', 'MYRO/BTC',
+  'JUP/USDT', 'JUP/BTC', 'JUP/USD',
+  'WLD/USDT', 'WLD/BTC', 'WLD/USD',
+  'PYTH/USDT', 'PYTH/BTC', 'PYTH/USD',
+  'JTO/USDT', 'JTO/BTC', 'JTO/USD',
+  'BLUR/USDT', 'BLUR/BTC', 'BLUR/USD',
+  'SEI/USDT', 'SEI/BTC', 'SEI/USD',
+  'TIA/USDT', 'TIA/BTC', 'TIA/USD',
+  'SUI/USDT', 'SUI/BTC', 'SUI/USD',
+  'INJ/USDT', 'INJ/BTC', 'INJ/USD',
+  'ARB/USDT', 'ARB/BTC', 'ARB/USD',
+  'OP/USDT', 'OP/BTC', 'OP/USD',
+  'GMT/USDT', 'GMT/BTC', 'GMT/USD',
+  'APE/USDT', 'APE/BTC', 'APE/USD',
+  'GALA/USDT', 'GALA/BTC', 'GALA/USD',
+  'CHZ/USDT', 'CHZ/BTC', 'CHZ/USD',
+  'ENJ/USDT', 'ENJ/BTC', 'ENJ/USD',
+  'THETA/USDT', 'THETA/BTC', 'THETA/USD',
+  'AXS/USDT', 'AXS/BTC', 'AXS/USD',
+  'MANA/USDT', 'MANA/BTC', 'MANA/USD',
+  'SAND/USDT', 'SAND/BTC', 'SAND/USD',
+  'FTM/USDT', 'FTM/BTC', 'FTM/USD',
+  'NEAR/USDT', 'NEAR/BTC', 'NEAR/USD',
+  'GRT/USDT', 'GRT/BTC', 'GRT/USD',
+  '1INCH/USDT', '1INCH/BTC', '1INCH/USD',
+  'CRV/USDT', 'CRV/BTC', 'CRV/USD',
+  'YFI/USDT', 'YFI/BTC', 'YFI/USD',
+  'SNX/USDT', 'SNX/BTC', 'SNX/USD',
+  'SUSHI/USDT', 'SUSHI/BTC', 'SUSHI/USD',
+  'COMP/USDT', 'COMP/BTC', 'COMP/USD',
+  'MKR/USDT', 'MKR/BTC', 'MKR/USD',
+  'AAVE/USDT', 'AAVE/BTC', 'AAVE/USD',
+  'ICP/USDT', 'ICP/BTC', 'ICP/USD',
+  'VET/USDT', 'VET/BTC', 'VET/USD',
+  'ALGO/USDT', 'ALGO/BTC', 'ALGO/USD',
+  'XLM/USDT', 'XLM/BTC', 'XLM/USD',
+  'DASH/USDT', 'DASH/BTC', 'DASH/USD',
+  'ZEC/USDT', 'ZEC/BTC', 'ZEC/USD',
+  'RNDR/USDT', 'RNDR/BTC', 'RNDR/USD',
+  'IMX/USDT', 'IMX/BTC', 'IMX/USD',
+  'LRC/USDT', 'LRC/BTC', 'LRC/USD',
+  'ENS/USDT', 'ENS/BTC', 'ENS/USD',
+  'DYDX/USDT', 'DYDX/BTC', 'DYDX/USD',
+  'CAKE/USDT', 'CAKE/BTC', 'CAKE/USD',
+  'ROSE/USDT', 'ROSE/BTC', 'ROSE/USD',
+  'CELO/USDT', 'CELO/BTC', 'CELO/USD',
+  'KLAY/USDT', 'KLAY/BTC', 'KLAY/USD',
+  'RUNE/USDT', 'RUNE/BTC', 'RUNE/USD',
+  'EGLD/USDT', 'EGLD/BTC', 'EGLD/USD',
+  'ZIL/USDT', 'ZIL/BTC', 'ZIL/USD',
+  'XTZ/USDT', 'XTZ/BTC', 'XTZ/USD',
+  'WAVES/USDT', 'WAVES/BTC', 'WAVES/USD',
+  'IOTA/USDT', 'IOTA/BTC', 'IOTA/USD',
+  'NEO/USDT', 'NEO/BTC', 'NEO/USD',
+  'QTUM/USDT', 'QTUM/BTC', 'QTUM/USD',
+  'ONT/USDT', 'ONT/BTC', 'ONT/USD',
+  'ZRX/USDT', 'ZRX/BTC', 'ZRX/USD',
+  'BAT/USDT', 'BAT/BTC', 'BAT/USD',
+  'OMG/USDT', 'OMG/BTC', 'OMG/USD',
+  'KSM/USDT', 'KSM/BTC', 'KSM/USD'
 ];
 
 // Нормализация символов
@@ -1062,7 +1140,8 @@ function calculateArbitrageOpportunities(prices, symbol) {
       const realProfitPercent = (realProfit / realBuyPrice) * 100;
       
       // Проверяем минимальный порог прибыли (используем реальную прибыль)
-      if (realProfitPercent > 0.1 && realProfit > 0) {
+      // Уменьшен минимальный порог прибыли для показа больше возможностей
+      if (realProfitPercent > 0.01 && realProfit > 0) {
         opportunities.push({
           symbol,
           buyExchange,
@@ -1110,8 +1189,8 @@ app.get('/api/arbitrage',
   [
     query('limit')
       .optional()
-      .isInt({ min: 1, max: 500 })
-      .withMessage('Лимит должен быть числом от 1 до 500'),
+      .isInt({ min: 1, max: 1000 })
+      .withMessage('Лимит должен быть числом от 1 до 1000'),
     query('_t')
       .optional()
       .isNumeric()
@@ -1120,7 +1199,8 @@ app.get('/api/arbitrage',
   handleValidationErrors,
   async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 100;
+    // Увеличен лимит по умолчанию для обработки больше пар
+    const limit = parseInt(req.query.limit) || 500;
     const cacheKey = `arbitrage_${limit}`;
     const cached = arbitrageCache.get(cacheKey);
     
@@ -1207,13 +1287,14 @@ app.get('/api/prices',
   [
     query('limit')
       .optional()
-      .isInt({ min: 1, max: 200 })
-      .withMessage('Лимит должен быть числом от 1 до 200')
+      .isInt({ min: 1, max: 500 })
+      .withMessage('Лимит должен быть числом от 1 до 500')
   ],
   handleValidationErrors,
   async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 50;
+    // Увеличен лимит по умолчанию для цен
+    const limit = parseInt(req.query.limit) || 200;
     const allPrices = {};
     const pairsToProcess = TRADING_PAIRS.slice(0, limit);
     
